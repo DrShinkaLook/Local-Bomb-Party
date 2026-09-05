@@ -1,0 +1,18 @@
+{
+  "name": "bombparty",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A clean-room desktop word-bomb party game. Electron + React + TypeScript, with a headless deterministic engine.",
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "npm run build --workspace @bombparty/engine && npm run dev --workspace @bombparty/desktop",
+    "build": "npm run build --workspace @bombparty/engine && npm run build --workspace @bombparty/desktop",
+    "test": "npm run test --workspace @bombparty/engine",
+    "typecheck": "npm run build --workspace @bombparty/engine && npm run typecheck --workspace @bombparty/engine && npm run typecheck:test --workspace @bombparty/engine && npm run typecheck --workspace @bombparty/desktop",
+    "package": "npm run package --workspace @bombparty/desktop",
+    "dictionary:fetch": "node tools/fetch-dictionary.mjs",
+    "dictionary:expand": "python3 tools/expand_hunspell.py --out data/words-en.txt"
+  },
+  "engines": { "node": ">=20" }
+}

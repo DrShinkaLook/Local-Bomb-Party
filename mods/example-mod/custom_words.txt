@@ -1,0 +1,7 @@
+# Lines beginning with # are ignored. One word per line, letters only.
+# Words added here join the dictionary the next time the game loads.
+gizmo
+widget
+doohickey
+thingamajig
+whatsit

@@ -1,0 +1,7 @@
+{
+  "_comment": "CSS custom properties applied over the default theme.",
+  "--bp-accent": "#7c5cff",
+  "--bp-accent-soft": "#a58bff",
+  "--bp-fuse": "#67e8f9",
+  "--bp-bg": "#05060f"
+}

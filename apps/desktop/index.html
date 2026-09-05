@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      The renderer is locked down at the document level as well as in the
+      BrowserWindow: no remote origins, no inline scripts, no eval. Styles allow
+      'unsafe-inline' only because Tailwind's runtime-injected style element
+      needs it in dev; the production build ships a static stylesheet.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:*; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Bomb Party</title>
+  </head>
+  <body class="bg-ground-950">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "name": "@bombparty/engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Headless, deterministic game engine for Bomb Party. No React, no Electron, no Node built-ins.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:test": "tsc -p tsconfig.test.json",
+    "test": "tsx test/run.ts",
+    "bench": "tsx bench/smoke.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "tsx": "^4.19.0"
+  }
+}

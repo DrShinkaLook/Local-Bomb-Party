@@ -1,0 +1,10 @@
+# Normalise line endings in the repository to LF, regardless of the platform a
+# contributor is on. Without this, a Windows checkout commits CRLF and every
+# file reads as fully rewritten to anyone on macOS or Linux.
+* text=auto eol=lf
+
+# Binary and generated assets are never line-ending converted.
+*.png binary
+*.jpg binary
+*.ico binary
+*.bin binary

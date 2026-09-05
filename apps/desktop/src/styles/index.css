@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Theme tokens live as CSS custom properties rather than Tailwind constants so
+ * a mod's theme.json can override them at runtime without a rebuild. Tailwind
+ * still owns layout and spacing; only colour and glow are themeable.
+ */
+:root {
+  --bp-bg: #07070d;
+  --bp-panel: #0e0f1c;
+  --bp-panel-edge: #1e2136;
+  --bp-text: #e8eaf6;
+  --bp-muted: #8b90ad;
+  --bp-accent: #22c55e;
+  --bp-accent-soft: #4ade80;
+  /* The same green as --bp-accent, as a raw triple, so translucent washes are
+     derived from one source instead of repeating a literal colour. */
+  --bp-accent-rgb: 34, 197, 94;
+  --bp-fuse: #ffb703;
+  --bp-good: #2dd4bf;
+  --bp-bad: #f03e3e;
+  --bp-glow: 0 0 42px -8px var(--bp-accent);
+  --shake: 0px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bp-bg);
+  color: var(--bp-text);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The play surface sits on a slow radial wash so the bomb glow has something
+   to bloom against without needing a background image. */
+.stage {
+  background:
+    radial-gradient(1200px 700px at 50% 12%, #1a1230 0%, transparent 60%),
+    radial-gradient(900px 600px at 80% 90%, #101a2c 0%, transparent 55%),
+    var(--bp-bg);
+}
+
+.panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0));
+  border: 1px solid var(--bp-panel-edge);
+  backdrop-filter: blur(6px);
+}
+
+.syllable {
+  letter-spacing: 0.14em;
+  text-shadow: 0 0 28px rgba(var(--bp-accent-rgb), 0.55);
+}
+
+/* Screen shake is driven by a custom property the game view sets from the
+   fuse, so the intensity curve lives in one place and respects the
+   reduced-motion setting by simply never being raised above zero. */
+.shakeable {
+  animation: shake 220ms ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shakeable {
+    animation: none !important;
+  }
+}
+
+input.word-input {
+  caret-color: var(--bp-accent);
+}
+
+input.word-input::placeholder {
+  color: var(--bp-muted);
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: #22263c;
+  border-radius: 8px;
+}

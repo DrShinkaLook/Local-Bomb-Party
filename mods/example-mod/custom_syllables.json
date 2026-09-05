@@ -1,0 +1,6 @@
+{
+  "_comment": "Syllables offered in addition to the ones derived from the dictionary. Each is still feasibility-checked: if the loaded word list cannot satisfy it, it is silently dropped rather than handed to a player.",
+  "common": ["ing", "ter"],
+  "uncommon": ["giz", "wid"],
+  "rare": ["thinga"]
+}

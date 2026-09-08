@@ -166,6 +166,7 @@ export const App = () => {
           isHost={isHost}
           onSend={onSend}
           onHostIntent={onHostIntent}
+          onLeave={leave}
         />
       );
   }

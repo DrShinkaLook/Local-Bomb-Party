@@ -181,3 +181,48 @@ describe('Renaming', () => {
     expect(events.some((e) => e.type === 'ERROR' && e.code === 'RENAME_LOCKED')).toBeTruthy();
   });
 });
+
+describe('Leaving a game', () => {
+  it('stops the loop so no further turn can start after leaving', () => {
+    const { engine, clock } = toFirstTurn();
+    const before = engine.snapshot().phase;
+    if (before.name !== 'turn') throw new Error('expected a turn');
+
+    // `dispose` is what the desktop session calls when the player leaves.
+    engine.dispose();
+    clock.advance(120_000);
+
+    // The fuse deadline passed long ago; without a running loop nothing
+    // advances, so the game cannot explode or hand out another turn.
+    const after = engine.snapshot().phase;
+    expect(after.name).toBe('turn');
+    if (after.name === 'turn') expect(after.turnId).toBe(before.turnId);
+  });
+
+  it('cancels a queued bot action on leave', () => {
+    const ctx = makeEngine('leave-bots');
+    ctx.engine.addLocalPlayer('Ana');
+    ctx.engine.addBot('easy');
+    ctx.engine.dispatch({ type: 'START_GAME' });
+    ctx.engine.startLoop();
+    ctx.clock.advance(COUNTDOWN_MS + 100);
+
+    ctx.engine.dispose();
+
+    expect(ctx.engine.peekPendingBot()).toBeNull();
+    // And nothing fires afterwards.
+    const words = ctx.engine.snapshot().usedWords.length;
+    ctx.clock.advance(60_000);
+    expect(ctx.engine.snapshot().usedWords.length).toBe(words);
+  });
+
+  it('stops emitting events to subscribers once left', () => {
+    const { engine, clock, events } = toFirstTurn();
+    engine.dispose();
+    const count = events.length;
+
+    clock.advance(60_000);
+
+    expect(events.length).toBe(count);
+  });
+});

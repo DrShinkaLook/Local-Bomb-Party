@@ -56,6 +56,21 @@ export const EXPLOSION_PAUSE_MS = 1_800;
 
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz';
 
+/**
+ * The letter set a player must collect for one bonus cycle.
+ *
+ * Normalised here rather than at the call site so the reducer and the renderer
+ * agree on what "complete" means: lowercased, non-letters dropped, duplicates
+ * collapsed, sorted.
+ */
+export const requiredAlphabet = (rules: GameRules): readonly string[] => {
+  const seen = new Set<string>();
+  for (const ch of rules.alphabetRequiredLetters.toLowerCase()) {
+    if (ALPHABET.includes(ch)) seen.add(ch);
+  }
+  return Array.from(seen).sort();
+};
+
 // ---------------------------------------------------------------------------
 // Selectors
 // ---------------------------------------------------------------------------
@@ -501,17 +516,27 @@ const submit = (
   if (state.rules.forbidWordReuse) ctx.dict.removeUsedWords(accepted);
 
   const player = playerById(state, id) as Player;
+  const required = requiredAlphabet(state.rules);
   const letters = new Set(player.stats.alphabetUsed);
-  for (const ch of accepted) letters.add(ch);
+  // The validator already guarantees the word is alphabetic; this keeps the
+  // tracker letters-only regardless, so a rules change cannot poison it.
+  for (const ch of accepted) if (ALPHABET.includes(ch)) letters.add(ch);
 
   const completedAlphabet =
-    state.rules.alphabetBonusEnabled && ALPHABET.split('').every((ch) => letters.has(ch));
+    state.rules.alphabetBonusEnabled &&
+    required.length > 0 &&
+    required.every((ch) => letters.has(ch));
 
-  const gainsLife = completedAlphabet && player.lives < state.rules.maxLives;
+  // Awarded exactly once per cycle: the tracker is cleared in the very same
+  // transition that grants the reward, so no timer, re-render, snapshot or
+  // repeated event can pay it twice. Still capped by maxLives.
+  const reward = completedAlphabet
+    ? Math.max(0, Math.min(state.rules.alphabetBonusLives, state.rules.maxLives - player.lives))
+    : 0;
 
   let updated: GameState = withPlayer(state, id, (p) => ({
     ...p,
-    lives: gainsLife ? p.lives + 1 : p.lives,
+    lives: p.lives + reward,
     stats: {
       wordsPlayed: p.stats.wordsPlayed + 1,
       lettersUsed: p.stats.lettersUsed + accepted.length,
@@ -523,7 +548,7 @@ const submit = (
   }));
   updated = { ...updated, usedWords: [...updated.usedWords, accepted] };
 
-  if (gainsLife) events.push({ type: 'LIFE_GAINED', playerId: id, reason: 'alphabet' });
+  if (reward > 0) events.push({ type: 'LIFE_GAINED', playerId: id, reason: 'alphabet' });
 
   const moved = advance(updated, ctx, now);
   return { state: moved.state, events: [...events, ...moved.events] };

@@ -76,8 +76,16 @@ export interface GameRules {
   readonly forbidWordReuse: boolean;
   /** Minimum accepted word length. */
   readonly minWordLength: number;
-  /** Using every letter of the alphabet grants a life. */
+  /** Collecting the required letter set grants lives. */
   readonly alphabetBonusEnabled: boolean;
+  /**
+   * The letters a player must collect to complete one cycle. Non-alphabetic
+   * characters are ignored and duplicates collapse, so "A-Z" style subsets are
+   * expressible without a separate validation pass.
+   */
+  readonly alphabetRequiredLetters: string;
+  /** Lives awarded per completed cycle, still capped by `maxLives`. */
+  readonly alphabetBonusLives: number;
   /** Weighted mix used when drawing a new syllable. */
   readonly difficultyMix: Readonly<Record<SyllableDifficulty, number>>;
   /**
@@ -96,6 +104,8 @@ export const DEFAULT_RULES: GameRules = {
   forbidWordReuse: true,
   minWordLength: 3,
   alphabetBonusEnabled: true,
+  alphabetRequiredLetters: 'abcdefghijklmnopqrstuvwxyz',
+  alphabetBonusLives: 1,
   difficultyMix: { common: 0.6, uncommon: 0.3, rare: 0.1 },
   minWordsPerSyllable: 60,
 };

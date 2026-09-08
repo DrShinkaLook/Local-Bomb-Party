@@ -27,6 +27,7 @@ export {
   nextAliveSeat,
   playerById,
   reduce,
+  requiredAlphabet,
   type Command,
   type EngineContext,
   type Transition,

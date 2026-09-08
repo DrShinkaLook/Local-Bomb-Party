@@ -125,6 +125,26 @@ export const Lobby = ({ snapshot, selfId, isHost, lanPort, onHostIntent, onLeave
                 })
               }
             />
+            <ToggleRow
+              label="Alphabet bonus"
+              value={rules.alphabetBonusEnabled}
+              editable={isHost}
+              onChange={(v) =>
+                onHostIntent({ type: 'SET_RULES', rules: { alphabetBonusEnabled: v } })
+              }
+            />
+            {rules.alphabetBonusEnabled ? (
+              <RuleRow
+                label="Hearts per alphabet"
+                value={rules.alphabetBonusLives}
+                editable={isHost}
+                min={1}
+                max={3}
+                onChange={(v) =>
+                  onHostIntent({ type: 'SET_RULES', rules: { alphabetBonusLives: v } })
+                }
+              />
+            ) : null}
             <RuleRow
               label="Minimum word length"
               value={rules.minWordLength}
@@ -211,6 +231,36 @@ const EditableName = ({
     />
   );
 };
+
+const ToggleRow = ({
+  label,
+  value,
+  editable,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  editable: boolean;
+  onChange: (value: boolean) => void;
+}) => (
+  <div className="flex items-center justify-between">
+    <span style={{ color: 'var(--bp-muted)' }}>{label}</span>
+    <button
+      role="switch"
+      aria-checked={value}
+      aria-label={label}
+      disabled={!editable}
+      className="h-6 w-11 rounded-full transition-colors disabled:opacity-40"
+      style={{ background: value ? 'var(--bp-accent)' : 'rgba(255,255,255,0.15)' }}
+      onClick={() => onChange(!value)}
+    >
+      <span
+        className="block h-5 w-5 rounded-full bg-white transition-transform"
+        style={{ transform: value ? 'translateX(1.4rem)' : 'translateX(0.15rem)' }}
+      />
+    </button>
+  </div>
+);
 
 interface RuleRowProps {
   readonly label: string;

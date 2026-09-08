@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { requiredAlphabet } from '@bombparty/engine';
 import type { GameSnapshot, Intent, PlayerId } from '@bombparty/engine';
 import { Bomb } from './Bomb.js';
 import { PlayerRing } from './PlayerRing.js';
@@ -17,6 +18,7 @@ interface GameViewProps {
   readonly isHost: boolean;
   readonly onSend: (intent: Intent) => void;
   readonly onHostIntent: (intent: Intent) => void;
+  readonly onLeave: () => void;
 }
 
 export const GameView = ({
@@ -30,7 +32,9 @@ export const GameView = ({
   isHost,
   onSend,
   onHostIntent,
+  onLeave,
 }: GameViewProps) => {
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const { progress, remainingMs } = useFuse(snapshot);
   const phase = snapshot.phase;
   const paused = snapshot.pausedAt !== null;
@@ -85,15 +89,23 @@ export const GameView = ({
               {paused ? 'Resume' : 'Pause'}
             </button>
           ) : null}
+          <button
+            className="panel rounded-lg px-3 py-1.5 text-xs uppercase tracking-wide transition-colors hover:bg-white/5"
+            onClick={() => setConfirmLeave(true)}
+          >
+            Leave
+          </button>
         </span>
       </header>
+
+      <AlphabetTrack snapshot={snapshot} selfId={selfId} />
 
       <div className="relative flex h-full w-full items-center justify-center">
         <PlayerRing snapshot={snapshot} selfId={selfId} />
 
         <div className="flex flex-col items-center gap-6">
           {phase.name === 'starting' ? (
-            <Countdown endsAt={phase.endsAt} />
+            <Countdown endsAt={phase.endsAt} pausedAt={snapshot.pausedAt} />
           ) : phase.name === 'turn' ? (
             <Bomb
               progress={progress}
@@ -150,9 +162,102 @@ export const GameView = ({
       <FuseBar progress={progress} visible={phase.name === 'turn'} />
 
       {paused ? <PauseOverlay canResume={pausable} onResume={togglePause} /> : null}
+
+      {confirmLeave ? (
+        <LeaveConfirm onCancel={() => setConfirmLeave(false)} onConfirm={onLeave} />
+      ) : null}
     </div>
   );
 };
+
+/**
+ * The local player's alphabet progress.
+ *
+ * Rendered straight from the authoritative snapshot rather than from any local
+ * tally, so it cannot drift from the engine: the reducer owns which letters are
+ * marked, and this only draws them.
+ */
+const AlphabetTrack = ({
+  snapshot,
+  selfId,
+}: {
+  snapshot: GameSnapshot;
+  selfId: PlayerId | null;
+}) => {
+  if (!snapshot.rules.alphabetBonusEnabled) return null;
+
+  const me = snapshot.players.find((p) => p.id === selfId);
+  if (me === undefined) return null;
+
+  const required = requiredAlphabet(snapshot.rules);
+  const used = new Set(me.stats.alphabetUsed);
+  const collected = required.filter((ch) => used.has(ch)).length;
+
+  return (
+    <aside className="absolute left-5 top-1/2 z-10 -translate-y-1/2 select-none">
+      <div className="panel rounded-xl px-3 py-3">
+        <div
+          className="mb-2 text-[10px] uppercase tracking-widest"
+          style={{ color: 'var(--bp-muted)' }}
+        >
+          Alphabet
+        </div>
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+          {required.map((ch) => {
+            const done = used.has(ch);
+            return (
+              <span
+                key={ch}
+                className="text-center font-display text-sm font-semibold transition-colors"
+                style={{
+                  color: done ? 'var(--bp-accent)' : 'var(--bp-muted)',
+                  opacity: done ? 1 : 0.4,
+                }}
+              >
+                {ch.toUpperCase()}
+              </span>
+            );
+          })}
+        </div>
+        <div className="mt-2 text-[10px] tabular-nums" style={{ color: 'var(--bp-muted)' }}>
+          {collected}/{required.length} · +{snapshot.rules.alphabetBonusLives} life
+        </div>
+      </div>
+    </aside>
+  );
+};
+
+const LeaveConfirm = ({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) => (
+  <div
+    className="absolute inset-0 z-30 flex items-center justify-center backdrop-blur-sm"
+    style={{ background: 'rgba(7, 7, 13, 0.72)' }}
+  >
+    <div className="panel w-[22rem] rounded-2xl p-6 text-center">
+      <h2 className="font-display text-2xl font-semibold">Leave Game?</h2>
+      <p className="mt-2 text-sm" style={{ color: 'var(--bp-muted)' }}>
+        Your current match will end.
+      </p>
+      <div className="mt-6 flex justify-center gap-3">
+        <button className="panel rounded-lg px-5 py-2.5" onClick={onCancel}>
+          Cancel
+        </button>
+        <button
+          className="rounded-lg px-6 py-2.5 font-semibold text-black transition-transform hover:scale-[1.03]"
+          style={{ background: 'var(--bp-bad)' }}
+          onClick={onConfirm}
+        >
+          Leave
+        </button>
+      </div>
+    </div>
+  </div>
+);
 
 const PauseOverlay = ({
   canResume,
@@ -202,11 +307,38 @@ const FuseBar = ({ progress, visible }: { progress: number; visible: boolean }) 
   </div>
 );
 
-const Countdown = ({ endsAt }: { endsAt: number }) => {
-  const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+const secondsLeft = (endsAt: number, pausedAt: number | null): number =>
+  Math.max(0, Math.ceil((endsAt - (pausedAt ?? Date.now())) / 1000));
+
+/**
+ * The pre-match countdown.
+ *
+ * Previously this computed a value once and never re-rendered, so it displayed
+ * "3" for the whole three seconds. It now ticks, but it is still not a
+ * decorative animation: every frame is derived from the authoritative
+ * phase.endsAt, and the engine alone decides when the first turn begins, so the
+ * display cannot disagree with the game state.
+ *
+ * Exactly one interval exists, owned by this component and cleared on unmount
+ * or whenever the deadline changes, so a phase change cannot leave a second
+ * timer running behind it.
+ */
+const Countdown = ({ endsAt, pausedAt }: { endsAt: number; pausedAt: number | null }) => {
+  const [remaining, setRemaining] = useState(() => secondsLeft(endsAt, pausedAt));
+
+  useEffect(() => {
+    setRemaining(secondsLeft(endsAt, pausedAt));
+    // Frozen while paused: the deadline is shifted forward on resume, so there
+    // is nothing to count down in the meantime.
+    if (pausedAt !== null) return;
+
+    const handle = setInterval(() => setRemaining(secondsLeft(endsAt, null)), 100);
+    return () => clearInterval(handle);
+  }, [endsAt, pausedAt]);
+
   return (
     <div className="font-display text-8xl font-bold" style={{ color: 'var(--bp-accent)' }}>
-      {remaining > 0 ? remaining : 'GO'}
+      {remaining > 0 ? remaining : 'GO!'}
     </div>
   );
 };

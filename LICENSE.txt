@@ -1,0 +1,68 @@
+Bomb Party — Proprietary Software Licence
+
+Copyright © 2026 Kobi Dao. All Rights Reserved.
+
+This software is proprietary. It is not open-source software, and no
+open-source licence applies to it.
+
+1. SCOPE
+
+This licence covers the original software, source code, documentation, design,
+and other material in this repository authored by or on behalf of Kobi Dao
+("the Software").
+
+It does NOT cover third-party components, which remain the property of their
+respective owners and are governed solely by their own licences. See
+THIRD_PARTY_NOTICES.md. Nothing in this licence restricts, replaces, or
+overrides the rights granted by those third-party licences, and no ownership
+of those components is claimed.
+
+2. RESERVATION OF RIGHTS
+
+All rights in the Software are reserved by Kobi Dao. Except as expressly
+permitted in writing by Kobi Dao, or as permitted by applicable law, you may
+not:
+
+  - copy or reproduce the Software;
+  - redistribute, publish, or make the Software available to others;
+  - sell, rent, lease, sublicense, or otherwise commercially exploit it;
+  - modify the Software, or create or distribute derivative works of it;
+  - repackage or rebrand it, in whole or in part;
+  - remove or alter any copyright, attribution, or licence notice.
+
+3. PERMITTED USE
+
+If you have obtained a copy of the Software from Kobi Dao or an authorised
+channel, you may install and run it for personal, non-commercial use.
+
+Viewing the source code, where it has been made visible, does not grant any
+licence to use, copy, or redistribute it.
+
+4. LIMITS OF THIS LICENCE
+
+Nothing in this licence is intended to exclude, restrict, or waive any right
+that cannot lawfully be excluded, restricted, or waived. Where applicable law
+grants you rights that this licence would otherwise limit — including any
+statutory rights of a consumer, and any right to make backup copies, to
+decompile, or to observe or study the Software that applicable law permits
+notwithstanding contract — those rights are unaffected, and this licence is
+read as modified only to the extent necessary to comply.
+
+5. NO WARRANTY
+
+The Software is provided "as is", without warranty of any kind, express or
+implied, including but not limited to warranties of merchantability, fitness
+for a particular purpose, and non-infringement, except to the extent such
+warranties cannot be excluded under applicable law.
+
+6. LIMITATION OF LIABILITY
+
+To the maximum extent permitted by applicable law, Kobi Dao shall not be
+liable for any claim, damages, or other liability arising from or in
+connection with the Software or its use. Nothing here limits liability that
+cannot lawfully be limited.
+
+7. CONTACT
+
+For permissions beyond the scope of this licence, contact the copyright
+holder.

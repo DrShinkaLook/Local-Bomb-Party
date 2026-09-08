@@ -2,6 +2,8 @@
   "name": "@bombparty/desktop",
   "version": "0.1.0",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE.txt",
+  "author": "Kobi Dao",
   "description": "Electron desktop shell and React render view for Bomb Party.",
   "type": "module",
   "main": "dist-electron/main.js",
@@ -41,6 +43,7 @@
   "build": {
     "appId": "dev.bombparty.desktop",
     "productName": "Bomb Party",
+    "copyright": "Copyright (c) 2026 Kobi Dao",
     "files": ["dist/**", "dist-electron/**"],
     "extraResources": [{ "from": "../../data", "to": "data" }],
     "directories": { "output": "release" }

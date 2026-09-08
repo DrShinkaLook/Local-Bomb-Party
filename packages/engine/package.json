@@ -2,6 +2,8 @@
   "name": "@bombparty/engine",
   "version": "0.1.0",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE.txt",
+  "author": "Kobi Dao",
   "description": "Headless, deterministic game engine for Bomb Party. No React, no Electron, no Node built-ins.",
   "type": "module",
   "main": "./dist/index.js",

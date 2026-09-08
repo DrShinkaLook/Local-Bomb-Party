@@ -42,10 +42,15 @@
   },
   "build": {
     "appId": "dev.bombparty.desktop",
+    "electronVersion": "32.3.3",
     "productName": "Bomb Party",
     "copyright": "Copyright (c) 2026 Kobi Dao",
     "files": ["dist/**", "dist-electron/**"],
-    "extraResources": [{ "from": "../../data", "to": "data" }],
+    "extraResources": [
+      { "from": "../../data", "to": "data" },
+      { "from": "../../LICENSE.txt", "to": "LICENSE.txt" },
+      { "from": "../../THIRD_PARTY_NOTICES.md", "to": "THIRD_PARTY_NOTICES.md" }
+    ],
     "directories": { "output": "release" }
   }
 }

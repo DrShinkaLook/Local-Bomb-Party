@@ -5,12 +5,31 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] — 2026-09-05
+## [0.2.0] — 2026-09-08
 
 First version that actually runs. `0.1.0` was written but had never been
 compiled against installed dependencies or launched.
 
 ### Added
+
+- **Alphabet bonus, now configurable.** The engine already tracked letters and
+  paid a life for a full alphabet; the letter set and the payout are now rules.
+  `alphabetRequiredLetters` (default all 26) and `alphabetBonusLives`
+  (default 1) join the existing `alphabetBonusEnabled`, and a new exported
+  `requiredAlphabet()` normalises the set once so the reducer and the renderer
+  agree on what "complete" means. The reward is capped by `maxLives` and
+  cannot double-pay: the tracker is cleared in the same transition that grants
+  it, so no timer, re-render, snapshot or repeated event can trigger it twice.
+  Progress is per player, and the local player's progress is drawn down the
+  left edge of the game screen straight from the snapshot.
+- **Leave Game.** A leave control beside the pause control, with a
+  confirmation step. It reuses the existing teardown rather than adding a
+  parallel path, so the beacon, host, client, game loop, bots and any queued
+  bot action are all torn down.
+- **Attribution mark.** "Made by Kobi Dao · © 2026", mounted once in the app
+  shell so it appears on every screen; pointer-events-none so it can never
+  intercept a click.
+
 
 - **Pause and resume.** A pause control in the game header, `Esc` as a
   shortcut, and a paused overlay. Implemented as a rule in the engine rather
@@ -34,6 +53,13 @@ compiled against installed dependencies or launched.
   reads as a chemistry accident rather than a lit fuse.
 
 ### Fixed
+
+- **The start countdown showed "3" for all three seconds.** It computed a value
+  once and never re-rendered. It now ticks 3, 2, 1, GO! from the authoritative
+  `phase.endsAt`, with a single interval that is cleared when the deadline
+  changes or the component unmounts, and it freezes while paused. The engine
+  still decides when the first turn begins, so the display cannot disagree with
+  the game state.
 
 - **Mods were silently disabled on Windows.** The mod-folder containment check
   compared string prefixes against a root with a trailing `/`. Windows resolves

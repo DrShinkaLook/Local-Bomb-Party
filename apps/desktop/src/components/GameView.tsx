@@ -73,11 +73,11 @@ export const GameView = ({
       className={['stage relative h-full w-full overflow-hidden', shaking ? 'shakeable' : ''].join(' ')}
       style={{ ['--shake' as string]: `${shakePx}px` }}
     >
-      <header className="absolute left-0 right-0 top-0 flex items-center justify-between px-6 py-4">
+      <header className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-6 py-4">
         <span className="font-display text-sm tracking-widest" style={{ color: 'var(--bp-muted)' }}>
           ROUND · {snapshot.usedWords.length} words played
         </span>
-        <span className="flex items-center gap-4">
+        <span className="pointer-events-auto flex items-center gap-4">
           <span className="text-xs" style={{ color: 'var(--bp-muted)' }}>
             {phase.name === 'turn' ? `${phase.syllableDifficulty} syllable` : phase.name}
           </span>
@@ -124,23 +124,26 @@ export const GameView = ({
             />
           ) : null}
 
-          <WordInput
-            enabled={myTurn}
-            playerId={selfId}
-            rejection={myTurn ? rejection : null}
-            onTyping={(text) => {
-              if (selfId === null) return;
-              onSend({ type: 'TYPING', playerId: selfId, text });
-            }}
-            onSubmit={(word) => {
-              if (selfId === null) return;
-              onSend({ type: 'SUBMIT_WORD', playerId: selfId, word });
-            }}
-          />
         </div>
       </div>
 
-      <div className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 space-y-1 text-center">
+      <div className="absolute bottom-20 left-1/2 z-10 w-full max-w-md -translate-x-1/2 px-4">
+        <WordInput
+          enabled={myTurn}
+          playerId={selfId}
+          rejection={myTurn ? rejection : null}
+          onTyping={(text) => {
+            if (selfId === null) return;
+            onSend({ type: 'TYPING', playerId: selfId, text });
+          }}
+          onSubmit={(word) => {
+            if (selfId === null) return;
+            onSend({ type: 'SUBMIT_WORD', playerId: selfId, word });
+          }}
+        />
+      </div>
+
+      <div className="pointer-events-none absolute bottom-6 left-1/2 z-10 -translate-x-1/2 space-y-1 text-center">
         {toasts.map((toast) => (
           <div
             key={toast.id}
@@ -235,7 +238,7 @@ const LeaveConfirm = ({
   onConfirm: () => void;
 }) => (
   <div
-    className="absolute inset-0 z-30 flex items-center justify-center backdrop-blur-sm"
+    className="absolute inset-0 z-40 flex items-center justify-center backdrop-blur-sm"
     style={{ background: 'rgba(7, 7, 13, 0.72)' }}
   >
     <div className="panel w-[22rem] rounded-2xl p-6 text-center">
@@ -267,7 +270,7 @@ const PauseOverlay = ({
   onResume: () => void;
 }) => (
   <div
-    className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 backdrop-blur-sm"
+    className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6 backdrop-blur-sm"
     style={{ background: 'rgba(7, 7, 13, 0.72)' }}
   >
     <h2 className="font-display text-6xl font-bold" style={{ color: 'var(--bp-accent)' }}>
@@ -332,7 +335,7 @@ const Countdown = ({ endsAt, pausedAt }: { endsAt: number; pausedAt: number | nu
     // is nothing to count down in the meantime.
     if (pausedAt !== null) return;
 
-    const handle = setInterval(() => setRemaining(secondsLeft(endsAt, null)), 100);
+    const handle = setInterval(() => setRemaining(secondsLeft(endsAt, null)), 50);
     return () => clearInterval(handle);
   }, [endsAt, pausedAt]);
 

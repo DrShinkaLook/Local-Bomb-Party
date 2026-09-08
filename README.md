@@ -6,6 +6,14 @@ fuse burns out; miss, and it costs you a life. Last player standing wins.
 Electron + React + TypeScript, with a headless deterministic game engine that
 knows nothing about either.
 
+## Disclaimer
+
+This is an independent, unofficial software project created by Kobi Dao for
+educational and portfolio purposes. It is not affiliated with, endorsed by, or
+sponsored by JKLM or any other third party. All original source code and
+original project materials in this repository are © 2026 Kobi Dao. Third-party
+names and trademarks remain the property of their respective owners.
+
 ```bash
 npm install
 npm test        # 78 engine tests

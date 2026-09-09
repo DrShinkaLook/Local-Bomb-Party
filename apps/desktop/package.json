@@ -1,6 +1,6 @@
 {
   "name": "@bombparty/desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "license": "SEE LICENSE IN LICENSE.txt",
   "author": "Kobi Dao",
@@ -45,12 +45,26 @@
     "electronVersion": "32.3.3",
     "productName": "Bomb Party",
     "copyright": "Copyright (c) 2026 Kobi Dao",
-    "files": ["dist/**", "dist-electron/**"],
-    "extraResources": [
-      { "from": "../../data", "to": "data" },
-      { "from": "../../LICENSE.txt", "to": "LICENSE.txt" },
-      { "from": "../../THIRD_PARTY_NOTICES.md", "to": "THIRD_PARTY_NOTICES.md" }
+    "files": [
+      "dist/**",
+      "dist-electron/**"
     ],
-    "directories": { "output": "release" }
+    "extraResources": [
+      {
+        "from": "../../data",
+        "to": "data"
+      },
+      {
+        "from": "../../LICENSE.txt",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "../../THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      }
+    ],
+    "directories": {
+      "output": "release"
+    }
   }
 }

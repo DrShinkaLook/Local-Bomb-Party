@@ -5,6 +5,23 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-09-09
+
+### Fixed
+
+- Fixed the Pause and Leave Game controls being visible but unclickable because of a UI stacking issue.
+- Fixed the Leave Game flow so the existing session teardown properly stops the game session, timers, bots, and queued bot actions.
+- Fixed the gameplay input layout so the word-entry field no longer overlaps the active player's name and hearts.
+- Fixed countdown synchronization so gameplay begins immediately when GO appears instead of having an additional delay.
+- Verified player elimination and game-ending behavior through additional engine tests.
+- Verified the alphabet bonus behavior, including one reward per completed alphabet cycle, tracker reset, repeat rewards, disabled behavior, and the maximum-life cap.
+
+### Testing
+
+- 100 engine tests passing.
+- TypeScript typecheck passing.
+- Windows packaging was previously verified for the v0.2.0 build; v0.2.1 packaging will be verified separately.
+
 ## [0.2.0] — 2026-09-08
 
 First version that actually runs. `0.1.0` was written but had never been
@@ -22,14 +39,15 @@ compiled against installed dependencies or launched.
   it, so no timer, re-render, snapshot or repeated event can trigger it twice.
   Progress is per player, and the local player's progress is drawn down the
   left edge of the game screen straight from the snapshot.
+
 - **Leave Game.** A leave control beside the pause control, with a
   confirmation step. It reuses the existing teardown rather than adding a
   parallel path, so the beacon, host, client, game loop, bots and any queued
   bot action are all torn down.
+
 - **Attribution mark.** "Made by Kobi Dao · © 2026", mounted once in the app
   shell so it appears on every screen; pointer-events-none so it can never
   intercept a click.
-
 
 - **Pause and resume.** A pause control in the game header, `Esc` as a
   shortcut, and a paused overlay. Implemented as a rule in the engine rather
@@ -38,10 +56,12 @@ compiled against installed dependencies or launched.
   active player therefore resumes with precisely the fuse they stopped with,
   and `bombEndsAt` stays a genuine absolute deadline so nothing else in the
   codebase needs to know what "paused" means.
+
 - **Editable bot names.** Bot names are click-to-edit in the lobby. The draft
   is local and commits on `Enter` or blur, so a keystroke never becomes an
   intent; `Esc` reverts. Lobby-only, trimmed, capped at 24 characters, and
   blank names are refused rather than producing a nameless seat.
+
 - 12 engine tests covering the above, including that a bot's queued answer is
   shifted by the pause rather than firing the instant play resumes.
 
@@ -58,8 +78,8 @@ compiled against installed dependencies or launched.
   once and never re-rendered. It now ticks 3, 2, 1, GO! from the authoritative
   `phase.endsAt`, with a single interval that is cleared when the deadline
   changes or the component unmounts, and it freezes while paused. The engine
-  still decides when the first turn begins, so the display cannot disagree with
-  the game state.
+  still decides when the first turn begins, so the display cannot disagree
+  with the game state.
 
 - **Mods were silently disabled on Windows.** The mod-folder containment check
   compared string prefixes against a root with a trailing `/`. Windows resolves
@@ -67,15 +87,18 @@ compiled against installed dependencies or launched.
   `mods/example-mod` never loaded. Now uses `path.relative`, which is correct on
   both separators. The check failed closed, so this was a functional bug rather
   than a traversal hole.
+
 - **The preload script was built as ESM while the window sets `sandbox: true`.**
   Electron requires sandboxed preloads to be CommonJS, so the bridge failed to
   load, `window.bombParty` was undefined, and the app rendered a black screen.
   The preload is now bundled to `preload.cjs`. Fixed without weakening the
   sandbox, which is a stated non-negotiable of the security posture.
+
 - **The engine's package entry points pointed at a path that never existed.**
   `main`/`types` referenced `dist/src/index.js`, but `rootDir: "src"` strips the
   prefix and the build emits `dist/index.js`. This broke the desktop typecheck
   and would have broken the packaged app at runtime.
+
 - Engine is now built before the desktop workspace in `dev` and `typecheck`;
   neither previously did so, and both failed on a clean checkout.
 - `REJECTION_TEXT` is typed `Record<ValidationFailure, string>` instead of

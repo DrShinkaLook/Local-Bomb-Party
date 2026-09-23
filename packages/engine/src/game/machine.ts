@@ -1,4 +1,5 @@
 import type {
+  ChatMessage,
   GameEvent,
   GamePhase,
   GameRules,
@@ -8,7 +9,14 @@ import type {
   PlayerId,
   SyllableDifficulty,
 } from '../types.js';
-import { asTurnId } from '../types.js';
+import {
+  AVATARS,
+  CHAT_HISTORY_LIMIT,
+  MAX_CHAT_LENGTH,
+  MAX_NAME_LENGTH,
+  PLAYER_COLORS,
+  asTurnId,
+} from '../types.js';
 import type { Dictionary } from '../dictionary/dictionary.js';
 import type { SyllableGenerator } from '../dictionary/syllables.js';
 import type { Rng } from '../util/rng.js';
@@ -51,7 +59,7 @@ export interface Transition {
 /** Milliseconds the "starting" countdown and the post-explosion pause last. */
 export const COUNTDOWN_MS = 3_000;
 /** Longest display name a rename may set. Join is unchanged and uncapped. */
-export const MAX_NAME_LENGTH = 24;
+
 export const EXPLOSION_PAUSE_MS = 1_800;
 
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz';
@@ -250,6 +258,15 @@ export const reduce = (state: GameState, command: Command, ctx: EngineContext): 
     case 'RENAME_PLAYER':
       return rename(state, command.playerId, command.name, now);
 
+    case 'SEND_CHAT':
+      return sendChat(state, command.playerId, command.text, now);
+
+    case 'SET_READY':
+      return setReady(state, command.playerId, command.ready, now);
+
+    case 'SET_APPEARANCE':
+      return setAppearance(state, command.playerId, command.avatar, command.color, now);
+
     case 'PAUSE_GAME':
       return pause(state, now);
 
@@ -287,7 +304,21 @@ export const makePlayer = (
   seat: number,
   lives: number,
   kind: Player['kind'],
-): Player => ({ id, name, kind, lives, seat, connected: true, stats: emptyStats() });
+): Player => ({
+  id,
+  name,
+  kind,
+  lives,
+  seat,
+  connected: true,
+  // Bots are always willing; only humans have to say so.
+  ready: kind.type === 'bot',
+  // Seat-derived defaults mean a sixteen-player lobby is legible before anyone
+  // touches the pickers.
+  avatar: AVATARS[seat % AVATARS.length] as string,
+  color: PLAYER_COLORS[seat % PLAYER_COLORS.length] as string,
+  stats: emptyStats(),
+});
 
 const join = (state: GameState, id: PlayerId, name: string, now: number): Transition => {
   if (playerById(state, id) !== undefined) {
@@ -297,6 +328,7 @@ const join = (state: GameState, id: PlayerId, name: string, now: number): Transi
     return { state: next, events: [{ type: 'STATE_SYNC', snapshot: next }] };
   }
   if (state.phase.name !== 'lobby') return refuse(state, 'GAME_IN_PROGRESS');
+  if (state.players.length >= state.rules.playerLimit) return refuse(state, 'ROOM_FULL');
 
   const seat = state.players.length;
   const player = makePlayer(id, name, seat, state.rules.startingLives, {
@@ -622,6 +654,128 @@ const explode = (state: GameState, ctx: EngineContext, now: number): Transition 
 };
 
 // ---------------------------------------------------------------------------
+// Lobby: readiness and appearance
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether everyone who needs to agree has agreed.
+ *
+ * Exported because the renderer needs the same answer to decide whether to
+ * offer the Start button, and a rule with two implementations is a rule with
+ * two behaviours. Disconnected players are excluded: a room should not be held
+ * hostage by a laptop that went to sleep.
+ */
+export const allPlayersReady = (state: GameState): boolean =>
+  state.players
+    .filter((p) => p.kind.type === 'human' && p.connected)
+    .every((p) => p.ready);
+
+const setReady = (
+  state: GameState,
+  id: PlayerId,
+  ready: boolean,
+  now: number,
+): Transition => {
+  if (state.phase.name !== 'lobby') return refuse(state, 'NOT_IN_LOBBY');
+  const player = playerById(state, id);
+  if (player === undefined) return refuse(state, 'NO_SUCH_PLAYER');
+  if (player.ready === ready) return { state, events: [] };
+
+  const next = bump(withPlayer(state, id, (p) => ({ ...p, ready })), now);
+  return { state: next, events: [{ type: 'STATE_SYNC', snapshot: next }] };
+};
+
+/**
+ * Change avatar or colour.
+ *
+ * Values are matched against the shipped lists rather than stored as given.
+ * That is the whole reason appearance is an index into a palette: a LAN peer
+ * cannot push a URL, an emoji wall, or a chunk of CSS onto everyone else's
+ * screen through this path. An unrecognised value leaves the field untouched
+ * rather than failing the whole intent.
+ */
+const setAppearance = (
+  state: GameState,
+  id: PlayerId,
+  avatar: string | undefined,
+  color: string | undefined,
+  now: number,
+): Transition => {
+  if (state.phase.name !== 'lobby') return refuse(state, 'NOT_IN_LOBBY');
+  const player = playerById(state, id);
+  if (player === undefined) return refuse(state, 'NO_SUCH_PLAYER');
+
+  const nextAvatar = avatar !== undefined && AVATARS.includes(avatar) ? avatar : player.avatar;
+  const nextColor =
+    color !== undefined && PLAYER_COLORS.includes(color) ? color : player.color;
+
+  if (nextAvatar === player.avatar && nextColor === player.color) {
+    return { state, events: [] };
+  }
+
+  const next = bump(
+    withPlayer(state, id, (p) => ({ ...p, avatar: nextAvatar, color: nextColor })),
+    now,
+  );
+  return { state: next, events: [{ type: 'STATE_SYNC', snapshot: next }] };
+};
+
+// ---------------------------------------------------------------------------
+// Chat
+// ---------------------------------------------------------------------------
+
+/**
+ * Accept a chat message.
+ *
+ * Chat lives in `GameState` rather than in a channel of its own, which buys a
+ * lot for very little: it reaches LAN clients over the snapshot path that
+ * already exists, a reconnecting client gets the backlog from its WELCOME
+ * snapshot for free, and there is no second ordering to keep consistent with
+ * game events. The cost is that the history travels with every state change,
+ * which is why it is capped rather than unbounded.
+ *
+ * Whose turn it is deliberately does not matter here. Dedicating the keyboard
+ * to the bomb word on your own turn is a presentation decision — the renderer
+ * disables the chat box — not a rule, and the engine has no business enforcing
+ * one that changes nothing about the game.
+ */
+const sendChat = (
+  state: GameState,
+  id: PlayerId,
+  text: string,
+  now: number,
+): Transition => {
+  if (!state.rules.chatEnabled) return refuse(state, 'CHAT_DISABLED');
+
+  const author = playerById(state, id);
+  if (author === undefined) return refuse(state, 'UNKNOWN_PLAYER');
+
+  // Collapse runs of whitespace as well as trimming: a message of forty
+  // newlines is not a message, and it would wreck the transcript layout.
+  const body = text.replace(/\s+/g, ' ').trim().slice(0, MAX_CHAT_LENGTH);
+  if (body.length === 0) return refuse(state, 'EMPTY_MESSAGE');
+
+  const previous = state.chat[state.chat.length - 1];
+  const message: ChatMessage = {
+    id: (previous?.id ?? 0) + 1,
+    playerId: id,
+    name: author.name,
+    text: body,
+    at: now,
+  };
+
+  const chat = [...state.chat, message].slice(-CHAT_HISTORY_LIMIT);
+  const next = bump({ ...state, chat }, now);
+  return {
+    state: next,
+    events: [
+      { type: 'CHAT_MESSAGE', message },
+      { type: 'STATE_SYNC', snapshot: next },
+    ],
+  };
+};
+
+// ---------------------------------------------------------------------------
 // Initial state
 // ---------------------------------------------------------------------------
 
@@ -629,8 +783,10 @@ export const initialState = (
   roomId: GameState['roomId'],
   rules: GameRules,
   now: number,
+  roomCode: string,
 ): GameState => ({
   roomId,
+  roomCode,
   rules,
   phase: { name: 'lobby' },
   pausedAt: null,
@@ -638,6 +794,7 @@ export const initialState = (
   activeSeat: -1,
   usedWords: [],
   typing: '',
+  chat: [],
   version: 0,
   serverTime: now,
 });

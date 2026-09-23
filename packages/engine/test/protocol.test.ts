@@ -71,6 +71,7 @@ describe('protocol decoding', () => {
       kind: 'bombparty-host',
       v: PROTOCOL_VERSION,
       roomId: 'r1',
+      roomCode: 'ABC234',
       roomName: 'Kitchen table',
       port: 41234,
       players: 2,

@@ -16,6 +16,7 @@ import { DEFAULT_RULES, asPlayerId } from '../types.js';
 import type { Dictionary } from '../dictionary/dictionary.js';
 import { SyllableGenerator } from '../dictionary/syllables.js';
 import { Rng } from '../util/rng.js';
+import { generateRoomCode } from '../net/roomCode.js';
 import { Bot } from '../bots/bot.js';
 import {
   type Command,
@@ -75,6 +76,8 @@ export interface GameEngineOptions {
   /** Tick period. 50ms gives smooth BOMB_TICK audio cues at negligible cost. */
   readonly tickMs?: number;
   readonly syllables?: SyllableGenerator;
+  /** Overrides the code derived from the seed. Useful for rejoining a room. */
+  readonly roomCode?: string;
 }
 
 interface ScheduledBotAction {
@@ -116,7 +119,10 @@ export class GameEngine {
       rng: this.rng,
       now: () => this.clock.now(),
     };
-    this.state = initialState(options.roomId, rules, this.clock.now());
+    // Drawn from the room RNG before anything else consumes it, so a room
+    // created from a given seed always announces the same code.
+    const roomCode = options.roomCode ?? generateRoomCode(this.rng);
+    this.state = initialState(options.roomId, rules, this.clock.now(), roomCode);
   }
 
   // -------------------------------------------------------------------------
@@ -180,12 +186,18 @@ export class GameEngine {
     switch (intent.type) {
       case 'TYPING':
       case 'SUBMIT_WORD':
+      case 'SEND_CHAT':
+      case 'SET_READY':
+      case 'SET_APPEARANCE':
+      // A player owns their own name, avatar, colour and readiness. The host
+      // keeps the ability to rename anyone by dispatching with a null origin,
+      // which bypasses this check entirely.
+      case 'RENAME_PLAYER':
       case 'LEAVE':
       case 'JOIN':
         return intent.playerId === origin;
       case 'ADD_BOT':
       case 'REMOVE_PLAYER':
-      case 'RENAME_PLAYER':
       case 'SET_RULES':
       case 'START_GAME':
       case 'RESET_TO_LOBBY':
@@ -238,7 +250,12 @@ export class GameEngine {
     return id;
   }
 
-  addBot(difficulty: BotDifficulty, name?: string): PlayerId {
+  /** Returns null when the room is already at its seat limit. */
+  addBot(difficulty: BotDifficulty, name?: string): PlayerId | null {
+    if (this.state.players.length >= this.state.rules.playerLimit) {
+      this.emit([{ type: 'ERROR', code: 'ROOM_FULL', message: 'The room is full' }]);
+      return null;
+    }
     this.botCounter += 1;
     const id = asPlayerId(`bot:${difficulty}:${this.botCounter}`);
     const label = name ?? `${BOT_NAMES[(this.botCounter - 1) % BOT_NAMES.length]}`;

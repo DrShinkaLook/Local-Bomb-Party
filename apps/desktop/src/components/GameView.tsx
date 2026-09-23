@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
-import { requiredAlphabet } from '@bombparty/engine';
+import { bombIntensity, requiredAlphabet } from '@bombparty/engine';
 import type { GameSnapshot, Intent, PlayerId } from '@bombparty/engine';
 import { Bomb } from './Bomb.js';
+import { Chat } from './Chat.js';
 import { PlayerRing } from './PlayerRing.js';
 import { WordInput } from './WordInput.js';
 import { useFuse } from '../hooks/useFuse.js';
+import { useElementSize } from '../hooks/useElementSize.js';
+import { stageLayout, type AlphabetPlacement } from '../layout/stage.js';
 import type { Toast } from '../hooks/useSession.js';
 
 interface GameViewProps {
@@ -35,6 +38,11 @@ export const GameView = ({
   onLeave,
 }: GameViewProps) => {
   const [confirmLeave, setConfirmLeave] = useState(false);
+  // Everything about the stage's shape is derived from its measured box, not
+  // from constants, so the same code lays out a wide desktop window and a
+  // portrait phone.
+  const [stageRef, stageSize] = useElementSize<HTMLDivElement>();
+  const layout = stageLayout(stageSize.width, stageSize.height);
   const { progress, remainingMs } = useFuse(snapshot);
   const phase = snapshot.phase;
   const paused = snapshot.pausedAt !== null;
@@ -63,17 +71,33 @@ export const GameView = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [pausable, paused, onHostIntent]);
 
-  // Shake intensity is a cubic of fuse progress, so the last second is
-  // dramatically worse than the first — linear reads as a constant wobble.
-  const shakePx = screenShake && !reducedMotion && !paused ? Math.pow(progress, 3) * 7 : 0;
+  // Urgency comes from the engine so the UI cannot disagree with the
+  // authoritative clock: `visualProgress` still lands on 1.0 exactly when the
+  // bomb detonates, it just gets there on an accelerating curve.
+  const { intensity, visualProgress } = bombIntensity(progress, snapshot.rules);
+
+  // Shake has two parts. The cubic of raw progress is the v0.2 behaviour and
+  // is left exactly as it was, so nothing before the acceleration threshold
+  // changes. The intensity term is new and contributes only past it.
+  const motion = screenShake && !reducedMotion && !paused;
+  const shakePx = motion ? Math.pow(progress, 3) * 7 + intensity * 8 : 0;
   const shaking = shakePx > 0.4 && phase.name === 'turn';
+
+  // Rate rises with intensity as well as amplitude — a bigger wobble at the
+  // same speed reads as "louder", not "faster". Quantised to 10ms so a value
+  // that changes every frame does not invalidate styles every frame.
+  const shakeMs = Math.round((220 - intensity * 130) / 10) * 10;
 
   return (
     <div
+      ref={stageRef}
       className={['stage relative h-full w-full overflow-hidden', shaking ? 'shakeable' : ''].join(' ')}
-      style={{ ['--shake' as string]: `${shakePx}px` }}
+      style={{
+        ['--shake' as string]: `${shakePx}px`,
+        ['--shake-ms' as string]: `${shakeMs}ms`,
+      }}
     >
-      <header className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-6 py-4">
+      <header className="safe-top pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-6 py-4">
         <span className="font-display text-sm tracking-widest" style={{ color: 'var(--bp-muted)' }}>
           ROUND · {snapshot.usedWords.length} words played
         </span>
@@ -98,10 +122,16 @@ export const GameView = ({
         </span>
       </header>
 
-      <AlphabetTrack snapshot={snapshot} selfId={selfId} />
+      <AlphabetTrack snapshot={snapshot} selfId={selfId} placement={layout.alphabet} />
 
       <div className="relative flex h-full w-full items-center justify-center">
-        <PlayerRing snapshot={snapshot} selfId={selfId} />
+        <PlayerRing
+          snapshot={snapshot}
+          selfId={selfId}
+          radiusX={layout.ringRadiusX}
+          radiusY={layout.ringRadiusY}
+          cardScale={layout.cardScale}
+        />
 
         <div className="flex flex-col items-center gap-6">
           {phase.name === 'starting' ? (
@@ -109,25 +139,34 @@ export const GameView = ({
           ) : phase.name === 'turn' ? (
             <Bomb
               progress={progress}
+              visualProgress={visualProgress}
+              intensity={intensity}
               remainingMs={remainingMs}
               syllable={phase.syllable.toUpperCase()}
               exploding={false}
               reducedMotion={reducedMotion}
+              size={layout.bombSize}
             />
           ) : phase.name === 'exploded' ? (
             <Bomb
               progress={1}
+              visualProgress={1}
+              intensity={1}
               remainingMs={0}
               syllable={phase.syllable.toUpperCase()}
               exploding={exploding || true}
               reducedMotion={reducedMotion}
+              size={layout.bombSize}
             />
           ) : null}
 
         </div>
       </div>
 
-      <div className="absolute bottom-20 left-1/2 z-10 w-full max-w-md -translate-x-1/2 px-4">
+      <div
+        className="absolute left-1/2 z-10 w-full max-w-md -translate-x-1/2 px-4"
+        style={{ bottom: layout.mode === 'compact' ? '3.5rem' : '5rem' }}
+      >
         <WordInput
           enabled={myTurn}
           playerId={selfId}
@@ -162,6 +201,20 @@ export const GameView = ({
         ))}
       </div>
 
+      <Chat
+        messages={snapshot.chat}
+        selfId={selfId}
+        enabled={snapshot.rules.chatEnabled}
+        muted={myTurn}
+        isHost={isHost}
+        placement={layout.chat}
+        onSend={(text) => {
+          if (selfId === null) return;
+          onSend({ type: 'SEND_CHAT', playerId: selfId, text });
+        }}
+        onKick={(playerId) => onHostIntent({ type: 'REMOVE_PLAYER', playerId })}
+      />
+
       <FuseBar progress={progress} visible={phase.name === 'turn'} />
 
       {paused ? <PauseOverlay canResume={pausable} onResume={togglePause} /> : null}
@@ -183,9 +236,11 @@ export const GameView = ({
 const AlphabetTrack = ({
   snapshot,
   selfId,
+  placement,
 }: {
   snapshot: GameSnapshot;
   selfId: PlayerId | null;
+  placement: AlphabetPlacement;
 }) => {
   if (!snapshot.rules.alphabetBonusEnabled) return null;
 
@@ -197,15 +252,27 @@ const AlphabetTrack = ({
   const collected = required.filter((ch) => used.has(ch)).length;
 
   return (
-    <aside className="absolute left-5 top-1/2 z-10 -translate-y-1/2 select-none">
-      <div className="panel rounded-xl px-3 py-3">
+    <aside
+      className={
+        placement === 'rail'
+          ? 'absolute left-5 top-1/2 z-10 -translate-y-1/2 select-none'
+          : 'absolute left-1/2 top-14 z-10 w-[min(92vw,30rem)] -translate-x-1/2 select-none'
+      }
+    >
+      <div className="panel rounded-xl px-3 py-2">
         <div
-          className="mb-2 text-[10px] uppercase tracking-widest"
+          className="mb-1.5 text-[10px] uppercase tracking-widest"
           style={{ color: 'var(--bp-muted)' }}
         >
           Alphabet
         </div>
-        <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+        <div
+          className={
+            placement === 'rail'
+              ? 'grid grid-cols-2 gap-x-2 gap-y-1'
+              : 'flex flex-wrap justify-center gap-x-1.5 gap-y-0.5'
+          }
+        >
           {required.map((ch) => {
             const done = used.has(ch);
             return (
@@ -222,7 +289,10 @@ const AlphabetTrack = ({
             );
           })}
         </div>
-        <div className="mt-2 text-[10px] tabular-nums" style={{ color: 'var(--bp-muted)' }}>
+        <div
+          className={`mt-1.5 text-[10px] tabular-nums ${placement === 'strip' ? 'text-center' : ''}`}
+          style={{ color: 'var(--bp-muted)' }}
+        >
           {collected}/{required.length} · +{snapshot.rules.alphabetBonusLives} life
         </div>
       </div>

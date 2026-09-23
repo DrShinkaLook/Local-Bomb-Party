@@ -39,25 +39,50 @@ export interface BotProfile {
   readonly searchLimit: number;
 }
 
+/**
+ * Every knob is monotonic across the four tiers — vocabulary and search limit
+ * rise, think time, miss chance, fumble chance and short-word bias fall. That
+ * ordering is asserted in `bots.test.ts`, which is what stops a future tweak
+ * from accidentally making `medium` stronger than `hard`.
+ *
+ * `missChance` is the dominant dial, and measurably so: each tier's answer
+ * rate tracks (1 - missChance) almost exactly, because even three percent of a
+ * 128k-word dictionary still turns up a candidate for nearly any syllable.
+ * Vocabulary therefore shapes *which* word a bot plays — shorter, commoner,
+ * less surprising — far more than whether it finds one at all. Reach for
+ * `missChance` to change how often a tier survives; reach for
+ * `vocabularyFraction` and `shortWordBias` to change how it reads.
+ */
 export const BOT_PROFILES: Readonly<Record<BotDifficulty, BotProfile>> = {
   easy: {
-    vocabularyFraction: 0.06,
-    minThinkMs: 2_000,
-    maxThinkMs: 5_000,
-    missChance: 0.22,
-    fumbleChance: 0.18,
-    shortWordBias: 0.85,
-    searchLimit: 400,
+    vocabularyFraction: 0.035,
+    minThinkMs: 2_800,
+    maxThinkMs: 6_200,
+    missChance: 0.32,
+    fumbleChance: 0.26,
+    shortWordBias: 0.9,
+    searchLimit: 300,
   },
   medium: {
-    vocabularyFraction: 0.35,
-    minThinkMs: 1_000,
-    maxThinkMs: 3_000,
-    missChance: 0.06,
-    fumbleChance: 0.07,
-    shortWordBias: 0.5,
-    searchLimit: 2_000,
+    vocabularyFraction: 0.25,
+    minThinkMs: 1_500,
+    maxThinkMs: 3_600,
+    missChance: 0.11,
+    fumbleChance: 0.12,
+    shortWordBias: 0.6,
+    searchLimit: 1_600,
   },
+  hard: {
+    vocabularyFraction: 0.75,
+    minThinkMs: 500,
+    maxThinkMs: 1_500,
+    missChance: 0.015,
+    fumbleChance: 0.03,
+    shortWordBias: 0.2,
+    searchLimit: 8_000,
+  },
+  // Unchanged by deliberate instruction: this tier is the reference point the
+  // other three are tuned against.
   impossible: {
     vocabularyFraction: 1,
     minThinkMs: 0,

@@ -70,3 +70,31 @@ export interface DiscoveredHost {
   readonly address: string;
   readonly lastSeen: number;
 }
+
+/**
+ * Turns a room code into somewhere to connect.
+ *
+ * The seam that keeps room codes portable. The LAN implementation matches a
+ * code against the UDP beacons it is already receiving; a future relay
+ * implementation asks a server. Neither the code format, the protocol, nor any
+ * UI above this interface changes when the second one arrives — which is the
+ * entire reason a code is an opaque token rather than a packed address.
+ */
+export interface IRoomCodeResolver {
+  readonly kind: 'lan' | 'relay';
+  /**
+   * Resolve `code`, or null when nothing answers to it in time.
+   *
+   * Resolution is allowed to take a moment: on a LAN it waits for the next
+   * beacon rather than failing on the gap between two of them.
+   */
+  resolve(code: string, timeoutMs?: number): Promise<RoomEndpoint | null>;
+}
+
+export interface RoomEndpoint {
+  readonly address: string;
+  readonly port: number;
+  readonly roomId: RoomId;
+  readonly roomCode: string;
+  readonly roomName: string;
+}

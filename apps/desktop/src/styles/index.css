@@ -23,6 +23,7 @@
   --bp-bad: #f03e3e;
   --bp-glow: 0 0 42px -8px var(--bp-accent);
   --shake: 0px;
+  --shake-ms: 220ms;
 }
 
 html,
@@ -33,6 +34,14 @@ body,
 
 body {
   margin: 0;
+  /* Foundations for a touch device. None of this changes desktop rendering.
+     - overscroll-behavior stops a rubber-band drag revealing the page behind.
+     - touch-action removes the 300ms tap delay and double-tap zoom, which
+       otherwise make every button feel broken.
+     - the tap highlight is a grey flash Android paints over our own states. */
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   background: var(--bp-bg);
   color: var(--bp-text);
   font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -64,13 +73,56 @@ body {
    fuse, so the intensity curve lives in one place and respects the
    reduced-motion setting by simply never being raised above zero. */
 .shakeable {
-  animation: shake 220ms ease-in-out infinite;
+  /* Duration is a variable so the game view can speed the shake up as the fuse
+     accelerates; amplitude alone reads as a bigger wobble, not a faster one. */
+  animation: shake var(--shake-ms, 220ms) ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .shakeable {
     animation: none !important;
   }
+
+  /* Honour the preference across the whole interface, not only the shake.
+     Transitions are kept at a hair above zero rather than removed, so state
+     changes still fire their transitionend handlers. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Touch targets.
+ *
+ * Scoped to coarse pointers so a mouse keeps the compact, dense layout that
+ * suits a desktop, while a finger gets the 44px minimum it needs. This is the
+ * cheapest piece of mobile groundwork available: one rule, no component
+ * changes, and no cost to the desktop build. */
+@media (pointer: coarse) {
+  button,
+  [role='switch'],
+  input[type='range'] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Keep content clear of notches and home indicators.
+ *
+ * Padding on .stage would do nothing here: an absolutely positioned child
+ * resolves its offsets against the ancestor's *padding box*, so top:0 lands in
+ * the same place either way. The insets have to be applied to the pinned
+ * elements themselves, which is what `.safe-top` and `.safe-bottom` are for.
+ * Both resolve to zero on every desktop. */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 input.word-input {

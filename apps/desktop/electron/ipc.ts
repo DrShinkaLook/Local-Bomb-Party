@@ -13,6 +13,7 @@ export const CHANNELS = {
   // renderer -> main, invoke
   hostRoom: 'bp:host-room',
   joinRoom: 'bp:join-room',
+  joinByCode: 'bp:join-by-code',
   leaveRoom: 'bp:leave-room',
   sendIntent: 'bp:intent',
   hostIntent: 'bp:host-intent',
@@ -50,15 +51,27 @@ export interface JoinRoomRequest {
   readonly playerId?: PlayerId;
 }
 
+export interface JoinByCodeRequest {
+  readonly code: string;
+  readonly playerName: string;
+}
+
+export type JoinByCodeResult =
+  | { readonly ok: true; readonly handle: SessionHandle }
+  | { readonly ok: false; readonly reason: 'MALFORMED' | 'NOT_FOUND' | 'REFUSED'; readonly message: string };
+
 export interface SessionHandle {
   readonly playerId: PlayerId;
   readonly roomId: string;
+  /** Shareable code for this room. */
+  readonly roomCode: string;
   readonly snapshot: GameSnapshot;
   readonly lanPort: number | null;
 }
 
 export interface DiscoveredHostSummary {
   readonly roomId: string;
+  readonly roomCode: string;
   readonly roomName: string;
   readonly address: string;
   readonly port: number;
@@ -97,6 +110,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 export interface BridgeApi {
   hostRoom(request: HostRoomRequest): Promise<SessionHandle>;
   joinRoom(request: JoinRoomRequest): Promise<SessionHandle>;
+  joinByCode(request: JoinByCodeRequest): Promise<JoinByCodeResult>;
   leaveRoom(): Promise<void>;
   sendIntent(intent: Intent): Promise<void>;
   hostIntent(intent: Intent): Promise<void>;

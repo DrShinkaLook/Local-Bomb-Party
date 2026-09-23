@@ -82,10 +82,13 @@ export class Session {
         kind: 'bombparty-host',
         v: PROTOCOL_VERSION,
         roomId: engine.snapshot().roomId,
+        roomCode: engine.snapshot().roomCode,
         roomName: request.roomName,
         port: lanPort as number,
         players: engine.snapshot().players.length,
-        maxPlayers: 16,
+        // Report the room's actual seat limit, not the socket backstop, so the
+        // lobby browser shows "3/6" for a host who capped it at six.
+        maxPlayers: engine.snapshot().rules.playerLimit,
         inProgress: engine.snapshot().phase.name !== 'lobby',
         sentAt: Date.now(),
       }));
@@ -96,6 +99,7 @@ export class Session {
     return {
       playerId: this.localPlayerId,
       roomId: snapshot.roomId,
+      roomCode: snapshot.roomCode,
       snapshot,
       lanPort,
     };
@@ -119,6 +123,7 @@ export class Session {
     return {
       playerId: handshake.playerId,
       roomId: handshake.roomId,
+      roomCode: handshake.snapshot.roomCode,
       snapshot: handshake.snapshot,
       lanPort: null,
     };

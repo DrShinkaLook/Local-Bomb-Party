@@ -19,11 +19,18 @@ const ACCENT_RGB = '34, 197, 94';
  */
 
 interface BombProps {
+  /** Linear fuse progress, 0..1. Drives heat and the countdown readout. */
   readonly progress: number;
+  /** Eased fuse position from the engine. Reaches 1.0 with `progress`. */
+  readonly visualProgress: number;
+  /** 0..1 urgency past the acceleration threshold. */
+  readonly intensity: number;
   readonly remainingMs: number;
   readonly syllable: string;
   readonly exploding: boolean;
   readonly reducedMotion: boolean;
+  /** Rendered edge in CSS pixels. The drawing is authored at 320 and scaled. */
+  readonly size?: number;
 }
 
 interface Particle {
@@ -35,14 +42,29 @@ interface Particle {
   hue: number;
 }
 
-export const Bomb = ({ progress, remainingMs, syllable, exploding, reducedMotion }: BombProps) => {
+export const Bomb = ({
+  progress,
+  visualProgress,
+  intensity,
+  remainingMs,
+  syllable,
+  exploding,
+  reducedMotion,
+  size = 320,
+}: BombProps) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const particles = useRef<Particle[]>([]);
   const frame = useRef<number | null>(null);
   const progressRef = useRef(progress);
+  const visualProgressRef = useRef(visualProgress);
+  const intensityRef = useRef(intensity);
   const explodingRef = useRef(exploding);
 
+  // Written every render and read inside the animation loop, so the draw call
+  // sees current values without the effect resubscribing sixty times a second.
   progressRef.current = progress;
+  visualProgressRef.current = visualProgress;
+  intensityRef.current = intensity;
   explodingRef.current = exploding;
 
   useEffect(() => {
@@ -52,23 +74,35 @@ export const Bomb = ({ progress, remainingMs, syllable, exploding, reducedMotion
     if (context === null) return;
 
     // Draw at device resolution so the fuse spark is not a soft blob on HiDPI.
+    //
+    // The artwork is authored in a fixed 320-unit space and the context is
+    // scaled to whatever the stage asked for. That keeps every constant in the
+    // draw call — fuse length, casing radius, neck offsets — as a single
+    // readable design, instead of sixteen multiplications that have to stay in
+    // step with each other.
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const size = 320;
-    canvas.width = size * dpr;
-    canvas.height = size * dpr;
-    context.scale(dpr, dpr);
+    const DESIGN = 320;
+    const scale = size / DESIGN;
+    canvas.width = Math.round(size * dpr);
+    canvas.height = Math.round(size * dpr);
+    context.scale(dpr * scale, dpr * scale);
 
     const draw = (): void => {
+      // `p` is real elapsed fraction — heat, glow and colour read from it.
+      // `vp` is where the fuse is *drawn*; it runs on the eased curve.
+      // `heat` is the acceleration term, zero until the threshold.
       const p = Math.min(1, Math.max(0, progressRef.current));
-      context.clearRect(0, 0, size, size);
+      const vp = Math.min(1, Math.max(0, visualProgressRef.current));
+      const heat = Math.min(1, Math.max(0, intensityRef.current));
+      context.clearRect(0, 0, DESIGN, DESIGN);
 
-      const cx = size / 2;
-      const cy = size / 2 + 26;
+      const cx = DESIGN / 2;
+      const cy = DESIGN / 2 + 26;
       const radius = 74;
 
       // Casing, with a heat glow that intensifies as the fuse burns down.
       const glow = context.createRadialGradient(cx, cy, radius * 0.2, cx, cy, radius * 1.9);
-      glow.addColorStop(0, `rgba(${ACCENT_RGB}, ${0.18 + p * 0.5})`);
+      glow.addColorStop(0, `rgba(${ACCENT_RGB}, ${Math.min(0.92, 0.18 + p * 0.5 + heat * 0.24)})`);
       glow.addColorStop(1, `rgba(${ACCENT_RGB}, 0)`);
       context.fillStyle = glow;
       context.beginPath();
@@ -102,15 +136,15 @@ export const Bomb = ({ progress, remainingMs, syllable, exploding, reducedMotion
       // Fuse: a quadratic curve that shortens as it burns.
       const fuseStart = { x: cx, y: cy - radius - 16 };
       const fullLength = 92;
-      const remaining = fullLength * (1 - p);
+      const remaining = fullLength * (1 - vp);
       const tip = {
-        x: fuseStart.x + Math.sin(p * 5) * 16 + 22 * (1 - p),
+        x: fuseStart.x + Math.sin(vp * 5) * 16 + 22 * (1 - vp),
         y: fuseStart.y - remaining,
       };
 
       context.beginPath();
       context.moveTo(fuseStart.x, fuseStart.y);
-      context.quadraticCurveTo(fuseStart.x + 30 * (1 - p), fuseStart.y - remaining * 0.6, tip.x, tip.y);
+      context.quadraticCurveTo(fuseStart.x + 30 * (1 - vp), fuseStart.y - remaining * 0.6, tip.x, tip.y);
       context.strokeStyle = '#6b5136';
       context.lineWidth = 5;
       context.lineCap = 'round';
@@ -118,7 +152,8 @@ export const Bomb = ({ progress, remainingMs, syllable, exploding, reducedMotion
 
       // Spark at the tip, plus particles.
       if (remaining > 2) {
-        const sparkRadius = 6 + Math.sin(Date.now() / 60) * 2 + p * 4;
+        const flickerMs = 60 - heat * 38;
+        const sparkRadius = 6 + Math.sin(Date.now() / flickerMs) * 2 + p * 4 + heat * 3;
         const spark = context.createRadialGradient(tip.x, tip.y, 0, tip.x, tip.y, sparkRadius * 2.6);
         spark.addColorStop(0, '#fff7e6');
         spark.addColorStop(0.35, '#ffb703');
@@ -129,13 +164,14 @@ export const Bomb = ({ progress, remainingMs, syllable, exploding, reducedMotion
         context.fill();
 
         if (!reducedMotion) {
-          const emit = 1 + Math.floor(p * 3);
+          const emit = 1 + Math.floor(p * 3) + Math.floor(heat * 4);
+          const spread = 1 + heat * 0.8;
           for (let i = 0; i < emit; i += 1) {
             particles.current.push({
               x: tip.x,
               y: tip.y,
-              vx: (Math.random() - 0.5) * 1.6,
-              vy: -Math.random() * 1.6 - 0.4,
+              vx: (Math.random() - 0.5) * 1.6 * spread,
+              vy: (-Math.random() * 1.6 - 0.4) * spread,
               life: 1,
               hue: 28 + Math.random() * 24,
             });
@@ -178,17 +214,21 @@ export const Bomb = ({ progress, remainingMs, syllable, exploding, reducedMotion
     return () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
     };
-  }, [reducedMotion]);
+  }, [reducedMotion, size]);
 
   const seconds = (remainingMs / 1000).toFixed(1);
 
   return (
     <div className="relative flex flex-col items-center">
-      <canvas ref={canvasRef} width={320} height={320} className="h-[320px] w-[320px]" />
+      <canvas
+        ref={canvasRef}
+        className="block"
+        style={{ width: `${size}px`, height: `${size}px` }}
+      />
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pt-10">
         <div
-          className="syllable font-display text-6xl font-bold uppercase"
-          style={{ color: 'var(--bp-text)' }}
+          className="syllable font-display font-bold uppercase leading-none"
+          style={{ color: 'var(--bp-text)', fontSize: `${Math.round(size * 0.19)}px` }}
         >
           {syllable}
         </div>

@@ -21,6 +21,7 @@ export {
   COUNTDOWN_MS,
   EXPLOSION_PAUSE_MS,
   alivePlayers,
+  allPlayersReady,
   currentPlayerId,
   initialState,
   makePlayer,
@@ -32,6 +33,7 @@ export {
   type EngineContext,
   type Transition,
 } from './game/machine.js';
+export { bombIntensity, type BombIntensity } from './game/bombIntensity.js';
 export {
   GameEngine,
   systemClock,
@@ -53,11 +55,20 @@ export {
   type DiscoveryBeacon,
   type ServerMessage,
 } from './net/protocol.js';
+export {
+  ROOM_CODE_ALPHABET,
+  ROOM_CODE_LENGTH,
+  generateRoomCode,
+  isRoomCode,
+  normalizeRoomCode,
+} from './net/roomCode.js';
 export type {
   AdapterHandshake,
   ConnectionStatus,
   DiscoveredHost,
   IDiscoveryService,
   INetworkAdapter,
+  IRoomCodeResolver,
+  RoomEndpoint,
 } from './net/INetworkAdapter.js';
 export { LocalAdapter } from './net/localAdapter.js';

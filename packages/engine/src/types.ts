@@ -25,7 +25,7 @@ export const asTurnId = (v: number): TurnId => v as TurnId;
 // Players
 // ---------------------------------------------------------------------------
 
-export type BotDifficulty = 'easy' | 'medium' | 'impossible';
+export type BotDifficulty = 'easy' | 'medium' | 'hard' | 'impossible';
 
 export type PlayerKind =
   | { readonly type: 'human'; readonly local: boolean }
@@ -40,6 +40,15 @@ export interface Player {
   /** Seat order within the room; stable for the lifetime of the room. */
   readonly seat: number;
   readonly connected: boolean;
+  /**
+   * Lobby readiness. Advisory: the host can start regardless, and the renderer
+   * is what withholds the Start button. Bots are born ready.
+   */
+  readonly ready: boolean;
+  /** One of AVATARS. */
+  readonly avatar: string;
+  /** One of PLAYER_COLORS. */
+  readonly color: string;
   readonly stats: PlayerStats;
 }
 
@@ -58,6 +67,52 @@ export interface PlayerStats {
 // ---------------------------------------------------------------------------
 
 export type SyllableDifficulty = 'common' | 'uncommon' | 'rare';
+
+/**
+ * Built-in avatars and player colours.
+ *
+ * Deliberately a fixed list rather than uploaded images. A picture would mean
+ * file handling, an IPC path, storage, and pushing bytes to every LAN peer —
+ * for a 32-pixel circle. An index into a shipped set costs one short string in
+ * the snapshot, renders identically on a future mobile client, and cannot be
+ * used to inject a URL or arbitrary CSS into another player's screen.
+ *
+ * Sixteen avatars for a sixteen-player room, so a full lobby is unambiguous.
+ * Colours are a curated palette that stays legible on the dark ground.
+ */
+export const AVATARS: readonly string[] = [
+  '🦊', '🐸', '🦉', '🐙', '🦈', '🐝', '🦄', '🐧',
+  '🦁', '🐺', '🐢', '🦇', '🦋', '🐬', '🦖', '🐱',
+];
+
+export const PLAYER_COLORS: readonly string[] = [
+  '#22c55e', '#38bdf8', '#f472b6', '#facc15',
+  '#a78bfa', '#fb923c', '#2dd4bf', '#f87171',
+];
+
+/** Hard ceiling on a player name, in characters. */
+export const MAX_NAME_LENGTH = 24;
+
+/** Hard ceiling on a single chat message, in characters. */
+export const MAX_CHAT_LENGTH = 200;
+
+/**
+ * How many messages the room keeps. Chat rides the ordinary snapshot rather
+ * than a channel of its own, so the history has to stay small enough to send
+ * on every state change without the bandwidth mattering.
+ */
+export const CHAT_HISTORY_LIMIT = 50;
+
+export interface ChatMessage {
+  /** Monotonic within a room. Stable React key, and an ordering tiebreak. */
+  readonly id: number;
+  readonly playerId: PlayerId;
+  /** Snapshotted at send time, so a later rename does not rewrite history. */
+  readonly name: string;
+  readonly text: string;
+  /** Host clock at the moment the host accepted it. */
+  readonly at: number;
+}
 
 export interface GameRules {
   /** Lives each player starts a round with. */
@@ -86,6 +141,23 @@ export interface GameRules {
   readonly alphabetRequiredLetters: string;
   /** Lives awarded per completed cycle, still capped by `maxLives`. */
   readonly alphabetBonusLives: number;
+  /**
+   * Maximum seats in the room, bots included. The LAN host keeps its own hard
+   * cap as a backstop; this is the number the host actually tunes.
+   */
+  readonly playerLimit: number;
+  /** Whether players may send chat messages in this room. */
+  readonly chatEnabled: boolean;
+  /**
+   * Whether the bomb's visual urgency ramps up through the back of the fuse.
+   * Presentation only — it does not change when the bomb detonates.
+   */
+  readonly bombAccelerationEnabled: boolean;
+  /**
+   * Fraction of the fuse that must elapse before acceleration begins, 0..1.
+   * Normalised, so it behaves identically on a 5-second and a 12-second fuse.
+   */
+  readonly bombAccelerationStart: number;
   /** Weighted mix used when drawing a new syllable. */
   readonly difficultyMix: Readonly<Record<SyllableDifficulty, number>>;
   /**
@@ -106,6 +178,10 @@ export const DEFAULT_RULES: GameRules = {
   alphabetBonusEnabled: true,
   alphabetRequiredLetters: 'abcdefghijklmnopqrstuvwxyz',
   alphabetBonusLives: 1,
+  playerLimit: 16,
+  chatEnabled: true,
+  bombAccelerationEnabled: true,
+  bombAccelerationStart: 0.5,
   difficultyMix: { common: 0.6, uncommon: 0.3, rare: 0.1 },
   minWordsPerSyllable: 60,
 };
@@ -170,6 +246,11 @@ export type GamePhase =
  */
 export interface GameState {
   readonly roomId: RoomId;
+  /**
+   * Short human-shareable code for this room. Opaque: it carries no address,
+   * and is turned into a connection by an IRoomCodeResolver.
+   */
+  readonly roomCode: string;
   readonly rules: GameRules;
   readonly phase: GamePhase;
   /**
@@ -188,6 +269,8 @@ export interface GameState {
   readonly usedWords: readonly string[];
   /** What the current player has typed so far, mirrored to spectators. */
   readonly typing: string;
+  /** Room chat, oldest first, bounded by CHAT_HISTORY_LIMIT. */
+  readonly chat: readonly ChatMessage[];
   /** Monotonic version; clients drop out-of-order snapshots. */
   readonly version: number;
   /** Host clock at snapshot time, for latency estimation on clients. */
@@ -211,6 +294,14 @@ export type Intent =
   | { readonly type: 'TYPING'; readonly playerId: PlayerId; readonly text: string }
   | { readonly type: 'SUBMIT_WORD'; readonly playerId: PlayerId; readonly word: string }
   | { readonly type: 'RENAME_PLAYER'; readonly playerId: PlayerId; readonly name: string }
+  | { readonly type: 'SEND_CHAT'; readonly playerId: PlayerId; readonly text: string }
+  | { readonly type: 'SET_READY'; readonly playerId: PlayerId; readonly ready: boolean }
+  | {
+      readonly type: 'SET_APPEARANCE';
+      readonly playerId: PlayerId;
+      readonly avatar?: string;
+      readonly color?: string;
+    }
   | { readonly type: 'PAUSE_GAME' }
   | { readonly type: 'RESUME_GAME' };
 
@@ -239,6 +330,7 @@ export type GameEvent =
   | { readonly type: 'LIFE_GAINED'; readonly playerId: PlayerId; readonly reason: 'alphabet' }
   | { readonly type: 'PLAYER_EXPLODED'; readonly playerId: PlayerId; readonly livesLeft: number }
   | { readonly type: 'PLAYER_ELIMINATED'; readonly playerId: PlayerId }
+  | { readonly type: 'CHAT_MESSAGE'; readonly message: ChatMessage }
   | { readonly type: 'GAME_OVER'; readonly winner: PlayerId | null }
   | { readonly type: 'ERROR'; readonly code: string; readonly message: string };
 

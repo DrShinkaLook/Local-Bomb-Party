@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { requiredAlphabet } from '@bombparty/engine';
 import type { GameEvent, GameSnapshot, Intent, PlayerId, ValidationFailure } from '@bombparty/engine';
 import { sfx } from '../audio/sfx.js';
 
@@ -32,6 +33,7 @@ export const useSession = (playerId: PlayerId | null) => {
   const [lastRejection, setLastRejection] = useState<string | null>(null);
   const [explosionAt, setExplosionAt] = useState<number | null>(null);
   const toastId = useRef(0);
+  const collectedRef = useRef<number | null>(null);
 
   const pushToast = useCallback((kind: Toast['kind'], text: string) => {
     toastId.current += 1;
@@ -45,6 +47,34 @@ export const useSession = (playerId: PlayerId | null) => {
   useEffect(() => {
     let cancelled = false;
 
+    /**
+     * The engine emits no "letter collected" event — collecting one is a
+     * consequence of an accepted word, not a rule — so the cue is derived by
+     * watching the local player's tracker across snapshots.
+     *
+     * Local player only: in a sixteen-player room, announcing everyone's
+     * letters would be a constant chatter with no information in it.
+     */
+    const announceLetters = (next: GameSnapshot): void => {
+      if (playerId === null) return;
+      const me = next.players.find((p) => p.id === playerId);
+      if (me === undefined) return;
+
+      // Counted the same way the tracker draws it: letters that are both
+      // required and used, so a letter outside the required set is silent.
+      const required = requiredAlphabet(next.rules);
+      const used = new Set(me.stats.alphabetUsed);
+      const collected = required.filter((ch) => used.has(ch)).length;
+
+      const previous = collectedRef.current;
+      collectedRef.current = collected;
+
+      // The first snapshot only establishes a baseline. A decrease is the
+      // tracker resetting after a heart, which LIFE_GAINED already announces.
+      if (previous === null || collected <= previous) return;
+      sfx.play('letter', collected / Math.max(1, required.length));
+    };
+
     void window.bombParty.getSnapshot().then((initial) => {
       if (!cancelled && initial !== null) setSnapshot(initial);
     });
@@ -53,6 +83,7 @@ export const useSession = (playerId: PlayerId | null) => {
       switch (event.type) {
         case 'STATE_SYNC':
           setSnapshot(event.snapshot);
+          announceLetters(event.snapshot);
           return;
 
         case 'TURN_STARTED':

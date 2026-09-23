@@ -10,10 +10,20 @@ import type { GameSnapshot, Player, PlayerId } from '@bombparty/engine';
 interface PlayerRingProps {
   readonly snapshot: GameSnapshot;
   readonly selfId: PlayerId | null;
-  readonly radius?: number;
+  /** Ellipse radii, supplied by the stage layout rather than assumed. */
+  readonly radiusX?: number;
+  readonly radiusY?: number;
+  /** Shrinks the cards so a full sixteen-seat ring still fits. */
+  readonly cardScale?: number;
 }
 
-export const PlayerRing = ({ snapshot, selfId, radius = 260 }: PlayerRingProps) => {
+export const PlayerRing = ({
+  snapshot,
+  selfId,
+  radiusX = 260,
+  radiusY = 161,
+  cardScale = 1,
+}: PlayerRingProps) => {
   const seated = [...snapshot.players].sort((a, b) => a.seat - b.seat);
   const active = snapshot.phase.name === 'turn' ? snapshot.phase.currentPlayer : null;
 
@@ -23,14 +33,16 @@ export const PlayerRing = ({ snapshot, selfId, radius = 260 }: PlayerRingProps) 
         // Start at the bottom and go clockwise, so the local player's usual
         // seat reads as "nearest the camera".
         const angle = (index / Math.max(1, seated.length)) * Math.PI * 2 + Math.PI / 2;
-        const x = Math.cos(angle) * radius;
-        const y = Math.sin(angle) * radius * 0.62;
+        const x = Math.cos(angle) * radiusX;
+        const y = Math.sin(angle) * radiusY;
 
         return (
           <div
             key={player.id}
             className="absolute left-1/2 top-1/2"
-            style={{ transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
+            style={{
+              transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) scale(${cardScale})`,
+            }}
           >
             <PlayerCard
               player={player}
@@ -63,7 +75,7 @@ const PlayerCard = ({ player, isActive, isSelf, typing }: PlayerCardProps) => {
         eliminated ? 'opacity-35 grayscale' : '',
       ].join(' ')}
       style={{
-        borderColor: isActive ? 'var(--bp-accent)' : 'var(--bp-panel-edge)',
+        borderColor: isActive ? player.color : 'var(--bp-panel-edge)',
       }}
     >
       {isActive ? (
@@ -75,6 +87,13 @@ const PlayerCard = ({ player, isActive, isSelf, typing }: PlayerCardProps) => {
       ) : null}
 
       <div className="flex items-center justify-center gap-1.5">
+        <span
+          className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px]"
+          style={{ background: `${player.color}22`, border: `1px solid ${player.color}` }}
+          aria-hidden
+        >
+          {player.avatar}
+        </span>
         <span className="truncate text-sm font-semibold" title={player.name}>
           {player.name}
         </span>

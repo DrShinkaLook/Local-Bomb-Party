@@ -140,6 +140,7 @@ describe('Renaming', () => {
     const { engine } = makeEngine();
     engine.addLocalPlayer('Ana');
     const bot = engine.addBot('easy');
+    if (bot === null) throw new Error('room unexpectedly full');
 
     engine.dispatch({ type: 'RENAME_PLAYER', playerId: bot, name: 'Kobai' });
 
@@ -151,6 +152,7 @@ describe('Renaming', () => {
     const { engine } = makeEngine();
     engine.addLocalPlayer('Ana');
     const bot = engine.addBot('easy');
+    if (bot === null) throw new Error('room unexpectedly full');
 
     engine.dispatch({ type: 'RENAME_PLAYER', playerId: bot, name: `   ${'x'.repeat(80)}   ` });
 
@@ -162,6 +164,7 @@ describe('Renaming', () => {
     const { engine, events } = makeEngine();
     engine.addLocalPlayer('Ana');
     const bot = engine.addBot('easy');
+    if (bot === null) throw new Error('room unexpectedly full');
     const before = engine.snapshot().players.find((p) => p.id === bot)?.name;
 
     engine.dispatch({ type: 'RENAME_PLAYER', playerId: bot, name: '   ' });

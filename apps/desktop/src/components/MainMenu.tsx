@@ -8,6 +8,8 @@ interface MainMenuProps {
   readonly onSoloGame: (name: string) => void;
   readonly onHostLan: (name: string, roomName: string) => void;
   readonly onJoin: (host: DiscoveredHostSummary, name: string) => void;
+  /** Resolves to an error message, or null when the join succeeded. */
+  readonly onJoinByCode: (code: string, name: string) => Promise<string | null>;
   readonly onOpenSettings: () => void;
 }
 
@@ -18,11 +20,26 @@ export const MainMenu = ({
   onSoloGame,
   onHostLan,
   onJoin,
+  onJoinByCode,
   onOpenSettings,
 }: MainMenuProps) => {
   const [name, setName] = useState(settings.playerName);
   const [roomName, setRoomName] = useState(`${settings.playerName}'s room`);
   const [hosts, setHosts] = useState<readonly DiscoveredHostSummary[]>([]);
+  const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
+
+  const joinByCode = async (): Promise<void> => {
+    if (joining) return;
+    setJoining(true);
+    setCodeError(null);
+    // Resolution waits for a beacon, so this can take a few seconds on a
+    // network where discovery has only just started.
+    const error = await onJoinByCode(code, name.trim());
+    setJoining(false);
+    if (error !== null) setCodeError(error);
+  };
 
   useEffect(() => {
     void window.bombParty.startDiscovery();
@@ -35,8 +52,8 @@ export const MainMenu = ({
   }, []);
 
   return (
-    <div className="stage flex h-full w-full items-center justify-center p-10">
-      <div className="grid w-full max-w-5xl grid-cols-[1.1fr_1fr] gap-8">
+    <div className="stage flex h-full w-full items-center justify-center overflow-y-auto p-4 sm:p-10">
+      <div className="grid w-full max-w-5xl grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-8">
         <section className="flex flex-col justify-center">
           <h1 className="font-display text-6xl font-bold tracking-tight">
             Bomb<span style={{ color: 'var(--bp-accent)' }}>Party</span>
@@ -96,8 +113,47 @@ export const MainMenu = ({
             </span>
           </header>
 
+          <div className="mt-4">
+            <label
+              className="block text-[10px] uppercase tracking-widest"
+              style={{ color: 'var(--bp-muted)' }}
+              htmlFor="room-code"
+            >
+              Join with a code
+            </label>
+            <div className="mt-1.5 flex gap-2">
+              <input
+                id="room-code"
+                className="panel w-full rounded-lg bg-black/30 px-3 py-2 font-mono text-sm uppercase tracking-[0.2em] outline-none"
+                value={code}
+                maxLength={9}
+                placeholder="ABC234"
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(event) => {
+                  setCode(event.target.value.toUpperCase());
+                  setCodeError(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void joinByCode();
+                }}
+              />
+              <button
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-black disabled:opacity-40"
+                style={{ background: 'var(--bp-accent)' }}
+                disabled={joining || loading || name.trim().length === 0 || code.trim().length === 0}
+                onClick={() => void joinByCode()}
+              >
+                {joining ? '…' : 'Join'}
+              </button>
+            </div>
+            <div className="mt-1 h-4 text-xs" style={{ color: 'var(--bp-bad)' }}>
+              {codeError ?? ''}
+            </div>
+          </div>
+
           <input
-            className="panel mt-4 rounded-lg bg-black/30 px-3 py-2 text-sm outline-none"
+            className="panel mt-3 rounded-lg bg-black/30 px-3 py-2 text-sm outline-none"
             value={roomName}
             maxLength={32}
             onChange={(event) => setRoomName(event.target.value)}
@@ -121,7 +177,8 @@ export const MainMenu = ({
                   <span>
                     <span className="block text-sm font-semibold">{host.roomName}</span>
                     <span className="block text-xs" style={{ color: 'var(--bp-muted)' }}>
-                      {host.address} · {host.players}/{host.maxPlayers}
+                      <span className="font-mono tracking-widest">{host.roomCode}</span> ·{' '}
+                      {host.players}/{host.maxPlayers}
                       {host.inProgress ? ' · in progress' : ''}
                     </span>
                   </span>

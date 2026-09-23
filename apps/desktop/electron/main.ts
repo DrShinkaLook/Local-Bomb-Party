@@ -1,10 +1,19 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { normalizeRoomCode } from '@bombparty/engine';
 import type { Dictionary, GameEvent, Intent } from '@bombparty/engine';
-import { CHANNELS, type AppSettings, type HostRoomRequest, type JoinRoomRequest } from './ipc.js';
+import {
+  CHANNELS,
+  type AppSettings,
+  type HostRoomRequest,
+  type JoinByCodeRequest,
+  type JoinByCodeResult,
+  type JoinRoomRequest,
+} from './ipc.js';
 import { Session } from './session.js';
 import { DiscoveryListener } from './net/discovery.js';
+import { LanRoomCodeResolver } from './net/roomCodeResolver.js';
 import { ModRegistry } from './mods.js';
 import { SettingsStore } from './settings.js';
 import { loadDictionary } from './dictionary/loader.js';
@@ -22,6 +31,7 @@ const modsRoot = isDev
 const mods = new ModRegistry(modsRoot);
 const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'));
 const discovery = new DiscoveryListener();
+const roomCodes = new LanRoomCodeResolver(discovery);
 
 const emitToRenderer = (channel: string, payload: unknown): void => {
   if (window !== null && !window.isDestroyed()) window.webContents.send(channel, payload);
@@ -119,6 +129,49 @@ const registerIpc = (): void => {
   });
 
   ipcMain.handle(CHANNELS.joinRoom, (_event, request: JoinRoomRequest) => session.join(request));
+
+  /**
+   * Join by code.
+   *
+   * Discovery is started on demand rather than assumed: a player can paste a
+   * code straight from the main menu without having opened the room browser,
+   * and the resolver needs beacons to be arriving before it can match one.
+   * The distinct failure reasons matter — "that is not a code" and "no room
+   * answered to it" need different advice in the UI.
+   */
+  ipcMain.handle(
+    CHANNELS.joinByCode,
+    async (_event, request: JoinByCodeRequest): Promise<JoinByCodeResult> => {
+      await discovery.start();
+
+      const endpoint = await roomCodes.resolve(request.code);
+      if (endpoint === null) {
+        const malformed = normalizeRoomCode(request.code) === null;
+        return malformed
+          ? { ok: false, reason: 'MALFORMED', message: 'That does not look like a room code.' }
+          : {
+              ok: false,
+              reason: 'NOT_FOUND',
+              message: 'No room on this network answered to that code.',
+            };
+      }
+
+      try {
+        const handle = await session.join({
+          address: endpoint.address,
+          port: endpoint.port,
+          playerName: request.playerName,
+        });
+        return { ok: true, handle };
+      } catch (error) {
+        return {
+          ok: false,
+          reason: 'REFUSED',
+          message: error instanceof Error ? error.message : 'The room refused the connection.',
+        };
+      }
+    },
+  );
   ipcMain.handle(CHANNELS.leaveRoom, () => session.stop());
   ipcMain.handle(CHANNELS.sendIntent, (_event, intent: Intent) => session.sendIntent(intent));
   ipcMain.handle(CHANNELS.hostIntent, (_event, intent: Intent) => session.hostIntent(intent));
@@ -129,6 +182,7 @@ const registerIpc = (): void => {
   ipcMain.handle(CHANNELS.listHosts, () =>
     discovery.knownHosts().map((entry) => ({
       roomId: entry.beacon.roomId,
+      roomCode: entry.beacon.roomCode,
       roomName: entry.beacon.roomName,
       address: entry.address,
       port: entry.beacon.port,
@@ -170,6 +224,7 @@ if (!app.requestSingleInstanceLock()) {
         CHANNELS.hostsChanged,
         discovery.knownHosts().map((entry) => ({
           roomId: entry.beacon.roomId,
+          roomCode: entry.beacon.roomCode,
           roomName: entry.beacon.roomName,
           address: entry.address,
           port: entry.beacon.port,

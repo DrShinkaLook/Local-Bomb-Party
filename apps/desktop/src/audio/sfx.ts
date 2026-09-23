@@ -12,7 +12,8 @@
  *   3. Zero bytes of audio in the bundle.
  *
  * Mods may still supply their own files, and `SoundKit.override` swaps a cue
- * for a decoded buffer when they do.
+ * for a decoded buffer when they do. `playMusic` is the same idea for a
+ * soundtrack: the core game never calls it, so music stays opt-in.
  */
 
 export type Cue =
@@ -23,11 +24,18 @@ export type Cue =
   | 'eliminate'
   | 'lifeGained'
   | 'turnStart'
-  | 'victory';
+  | 'victory'
+  /** The fuse has crossed the acceleration threshold. Once per turn. */
+  | 'accelerate'
+  /** A new required letter was collected. Fires often, so it stays quiet. */
+  | 'letter';
 
 export class SoundKit {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
+  private musicGain: GainNode | null = null;
+  private musicSource: AudioBufferSourceNode | null = null;
+  private musicVolume = 0.5;
   private readonly overrides = new Map<Cue, AudioBuffer>();
   private enabled = true;
   private volume = 0.7;
@@ -44,8 +52,17 @@ export class SoundKit {
       const master = context.createGain();
       master.gain.value = this.volume;
       master.connect(context.destination);
+
+      // Music rides its own bus so a mod's soundtrack can be mixed, ducked or
+      // muted without touching effect levels. The core game never feeds it —
+      // there is no built-in music, by design.
+      const musicGain = context.createGain();
+      musicGain.gain.value = this.musicVolume;
+      musicGain.connect(context.destination);
+
       this.context = context;
       this.master = master;
+      this.musicGain = musicGain;
       return context;
     } catch {
       return null;
@@ -107,6 +124,18 @@ export class SoundKit {
         return;
       case 'explode':
         this.explosion(context);
+        return;
+      case 'accelerate':
+        // A rising sweep under a closing filter: the sonic shape of something
+        // spooling up. Deliberately unlike 'tick' so it reads as a state
+        // change rather than a louder version of the clock.
+        this.riser(context);
+        return;
+      case 'letter':
+        // Fires up to twenty-six times a round, so it is short, soft, and
+        // pitched by how close the tracker is to a heart — the scale walking
+        // upward is the feedback, not the volume.
+        this.blip(context, 900 + intensity * 700, 0.05, 0.1, 'triangle');
         return;
       default:
         return;
@@ -174,6 +203,71 @@ export class SoundKit {
       osc.start(now);
       osc.stop(now + step * 2.5);
     }
+  }
+
+  /** Rising saw under a closing lowpass — "the bomb just sped up". */
+  private riser(context: AudioContext): void {
+    const now = context.currentTime;
+    const duration = 0.42;
+
+    const osc = context.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(110, now);
+    osc.frequency.exponentialRampToValueAtTime(420, now + duration);
+
+    const filter = context.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1_800, now);
+    filter.frequency.exponentialRampToValueAtTime(600, now + duration);
+    filter.Q.value = 6;
+
+    const envelope = context.createGain();
+    envelope.gain.setValueAtTime(0.0001, now);
+    envelope.gain.exponentialRampToValueAtTime(0.22, now + 0.06);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+    osc.connect(filter).connect(envelope).connect(this.master as GainNode);
+    osc.start(now);
+    osc.stop(now + duration + 0.02);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Music transport
+  //
+  // Inert in the core game: nothing here is called by Bomb Party itself. It
+  // exists so a mod can supply a soundtrack through the same decoded-buffer
+  // path `override` already uses for effects, without a core change later.
+  // ---------------------------------------------------------------------------
+
+  /** Start (or replace) the music bed. Passing null is the same as stopMusic. */
+  playMusic(buffer: AudioBuffer | null, options: { loop?: boolean } = {}): void {
+    const context = this.ensureContext();
+    if (context === null || this.musicGain === null) return;
+    this.stopMusic();
+    if (buffer === null) return;
+
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.loop = options.loop ?? true;
+    source.connect(this.musicGain);
+    source.start();
+    this.musicSource = source;
+  }
+
+  stopMusic(): void {
+    if (this.musicSource === null) return;
+    try {
+      this.musicSource.stop();
+    } catch {
+      // Already stopped, or never started. Nothing to unwind.
+    }
+    this.musicSource.disconnect();
+    this.musicSource = null;
+  }
+
+  setMusicVolume(volume: number): void {
+    this.musicVolume = Math.max(0, Math.min(1, volume));
+    if (this.musicGain !== null) this.musicGain.gain.value = this.musicVolume;
   }
 
   /** Filtered noise burst plus a sub-bass thump. */

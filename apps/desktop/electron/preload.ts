@@ -24,6 +24,7 @@ const subscribe = <T>(channel: string, listener: (payload: T) => void): (() => v
 const api: BridgeApi = {
   hostRoom: (request) => ipcRenderer.invoke(CHANNELS.hostRoom, request),
   joinRoom: (request) => ipcRenderer.invoke(CHANNELS.joinRoom, request),
+  joinByCode: (request) => ipcRenderer.invoke(CHANNELS.joinByCode, request),
   leaveRoom: () => ipcRenderer.invoke(CHANNELS.leaveRoom),
   sendIntent: (intent: Intent) => ipcRenderer.invoke(CHANNELS.sendIntent, intent),
   hostIntent: (intent: Intent) => ipcRenderer.invoke(CHANNELS.hostIntent, intent),

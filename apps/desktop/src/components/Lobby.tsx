@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AVATARS, PLAYER_COLORS, allPlayersReady } from '@bombparty/engine';
 import type { BotDifficulty, GameSnapshot, Intent, PlayerId } from '@bombparty/engine';
 
 interface LobbyProps {
@@ -7,21 +8,48 @@ interface LobbyProps {
   readonly isHost: boolean;
   readonly lanPort: number | null;
   readonly onHostIntent: (intent: Intent) => void;
+  /** Self-owned intents: readiness, appearance, renaming yourself. */
+  readonly onSend: (intent: Intent) => void;
   readonly onLeave: () => void;
 }
 
-export const Lobby = ({ snapshot, selfId, isHost, lanPort, onHostIntent, onLeave }: LobbyProps) => {
+export const Lobby = ({
+  snapshot,
+  selfId,
+  isHost,
+  lanPort,
+  onHostIntent,
+  onSend,
+  onLeave,
+}: LobbyProps) => {
   const rules = snapshot.rules;
+  const me = snapshot.players.find((p) => p.id === selfId) ?? null;
+  const everyoneReady = allPlayersReady(snapshot);
+  const full = snapshot.players.length >= rules.playerLimit;
 
   return (
-    <div className="stage flex h-full w-full flex-col items-center justify-center gap-8 p-10">
-      <div className="grid w-full max-w-5xl grid-cols-[1.2fr_1fr] gap-6">
+    <div className="stage flex h-full w-full flex-col items-center justify-center gap-6 overflow-y-auto p-4 sm:gap-8 sm:p-10">
+      <div className="grid w-full max-w-5xl grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-6">
         <section className="panel rounded-2xl p-6">
           <div className="flex items-center justify-between">
-            <h2 className="font-display text-xl font-semibold">Players</h2>
+            <h2 className="font-display text-xl font-semibold">
+              Players{' '}
+              <span className="text-sm font-normal" style={{ color: 'var(--bp-muted)' }}>
+                {snapshot.players.length}/{rules.playerLimit}
+              </span>
+            </h2>
             {lanPort !== null ? (
-              <span className="text-xs" style={{ color: 'var(--bp-muted)' }}>
-                LAN port {lanPort}
+              <span className="flex items-center gap-3 text-xs" style={{ color: 'var(--bp-muted)' }}>
+                <span>
+                  Code{' '}
+                  <span
+                    className="font-mono text-sm tracking-[0.25em]"
+                    style={{ color: 'var(--bp-accent)' }}
+                  >
+                    {snapshot.roomCode}
+                  </span>
+                </span>
+                <span>port {lanPort}</span>
               </span>
             ) : null}
           </div>
@@ -34,12 +62,26 @@ export const Lobby = ({ snapshot, selfId, isHost, lanPort, onHostIntent, onLeave
                   key={player.id}
                   className="panel flex items-center justify-between rounded-lg px-3 py-2"
                 >
-                  <span className="flex items-center gap-2">
-                    {isHost && player.kind.type === 'bot' ? (
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm"
+                      style={{ background: `${player.color}22`, border: `1px solid ${player.color}` }}
+                      aria-hidden
+                    >
+                      {player.avatar}
+                    </span>
+                    {(isHost && player.kind.type === 'bot') || player.id === selfId ? (
                       <EditableName
                         value={player.name}
                         onCommit={(name) =>
-                          onHostIntent({ type: 'RENAME_PLAYER', playerId: player.id, name })
+                          // Your own name is yours to change; a bot's belongs
+                          // to the host. Both land on the same intent, but from
+                          // different authority.
+                          (player.id === selfId ? onSend : onHostIntent)({
+                            type: 'RENAME_PLAYER',
+                            playerId: player.id,
+                            name,
+                          })
                         }
                       />
                     ) : (
@@ -47,6 +89,14 @@ export const Lobby = ({ snapshot, selfId, isHost, lanPort, onHostIntent, onLeave
                     )}
                     {player.id === selfId ? (
                       <span className="rounded bg-white/10 px-1.5 text-[10px] uppercase">you</span>
+                    ) : null}
+                    {player.kind.type === 'human' && player.ready ? (
+                      <span
+                        className="rounded px-1.5 text-[10px] uppercase"
+                        style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--bp-accent)' }}
+                      >
+                        ready
+                      </span>
                     ) : null}
                     {player.kind.type === 'bot' ? (
                       <span
@@ -75,15 +125,69 @@ export const Lobby = ({ snapshot, selfId, isHost, lanPort, onHostIntent, onLeave
 
           {isHost ? (
             <div className="mt-5 flex flex-wrap gap-2">
-              {(['easy', 'medium', 'impossible'] as BotDifficulty[]).map((difficulty) => (
+              {(['easy', 'medium', 'hard', 'impossible'] as BotDifficulty[]).map((difficulty) => (
                 <button
                   key={difficulty}
-                  className="panel rounded-lg px-3 py-2 text-sm capitalize transition-colors hover:bg-white/5"
+                  className="panel rounded-lg px-3 py-2 text-sm capitalize transition-colors hover:bg-white/5 disabled:opacity-40"
+                  disabled={full}
                   onClick={() => onHostIntent({ type: 'ADD_BOT', difficulty })}
                 >
                   + {difficulty} bot
                 </button>
               ))}
+            </div>
+          ) : null}
+          {me !== null ? (
+            <div className="mt-5 border-t pt-4" style={{ borderColor: 'var(--bp-panel-edge)' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-widest" style={{ color: 'var(--bp-muted)' }}>
+                  You
+                </span>
+                <button
+                  className="rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors"
+                  style={
+                    me.ready
+                      ? { background: 'var(--bp-accent)', color: '#000' }
+                      : { border: '1px solid var(--bp-panel-edge)', color: 'var(--bp-text)' }
+                  }
+                  aria-pressed={me.ready}
+                  onClick={() => onSend({ type: 'SET_READY', playerId: me.id, ready: !me.ready })}
+                >
+                  {me.ready ? 'Ready' : 'Not ready'}
+                </button>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-1">
+                {AVATARS.map((avatar) => (
+                  <button
+                    key={avatar}
+                    className="grid h-7 w-7 place-items-center rounded text-sm transition-colors hover:bg-white/10"
+                    style={me.avatar === avatar ? { background: 'rgba(255,255,255,0.14)' } : undefined}
+                    aria-label={`Avatar ${avatar}`}
+                    aria-pressed={me.avatar === avatar}
+                    onClick={() => onSend({ type: 'SET_APPEARANCE', playerId: me.id, avatar })}
+                  >
+                    {avatar}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {PLAYER_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    className="h-5 w-5 rounded-full transition-transform hover:scale-110"
+                    style={{
+                      background: color,
+                      outline: me.color === color ? '2px solid var(--bp-text)' : 'none',
+                      outlineOffset: '2px',
+                    }}
+                    aria-label={`Colour ${color}`}
+                    aria-pressed={me.color === color}
+                    onClick={() => onSend({ type: 'SET_APPEARANCE', playerId: me.id, color })}
+                  />
+                ))}
+              </div>
             </div>
           ) : null}
         </section>
@@ -146,6 +250,28 @@ export const Lobby = ({ snapshot, selfId, isHost, lanPort, onHostIntent, onLeave
               />
             ) : null}
             <RuleRow
+              label="Player limit"
+              value={rules.playerLimit}
+              editable={isHost}
+              min={Math.max(2, snapshot.players.length)}
+              max={16}
+              onChange={(v) => onHostIntent({ type: 'SET_RULES', rules: { playerLimit: v } })}
+            />
+            <ToggleRow
+              label="Bomb acceleration"
+              value={rules.bombAccelerationEnabled}
+              editable={isHost}
+              onChange={(v) =>
+                onHostIntent({ type: 'SET_RULES', rules: { bombAccelerationEnabled: v } })
+              }
+            />
+            <ToggleRow
+              label="Chat"
+              value={rules.chatEnabled}
+              editable={isHost}
+              onChange={(v) => onHostIntent({ type: 'SET_RULES', rules: { chatEnabled: v } })}
+            />
+            <RuleRow
               label="Minimum word length"
               value={rules.minWordLength}
               editable={isHost}
@@ -166,9 +292,14 @@ export const Lobby = ({ snapshot, selfId, isHost, lanPort, onHostIntent, onLeave
             className="rounded-lg px-8 py-3 font-semibold text-black transition-transform hover:scale-[1.03] disabled:opacity-40"
             style={{ background: 'var(--bp-accent)' }}
             disabled={snapshot.players.length < 2}
+            title={everyoneReady ? undefined : 'Some players are not ready yet'}
             onClick={() => onHostIntent({ type: 'START_GAME' })}
           >
-            {snapshot.players.length < 2 ? 'Need 2 players' : 'Start game'}
+            {snapshot.players.length < 2
+              ? 'Need 2 players'
+              : everyoneReady
+                ? 'Start game'
+                : 'Start anyway'}
           </button>
         ) : (
           <span className="px-5 py-3 text-sm" style={{ color: 'var(--bp-muted)' }}>

@@ -100,6 +100,22 @@ export const App = () => {
     setScreen('session');
   }, []);
 
+  /**
+   * Join a room by code. Returns the message to show, or null on success.
+   *
+   * The main process owns resolution because it owns discovery; the renderer
+   * only has to know whether it worked and what to say if it did not.
+   */
+  const joinByCode = useCallback(async (code: string, name: string): Promise<string | null> => {
+    const result = await window.bombParty.joinByCode({ code, playerName: name });
+    if (!result.ok) return result.message;
+    setPlayerId(result.handle.playerId);
+    setIsHost(false);
+    setLanPort(null);
+    setScreen('session');
+    return null;
+  }, []);
+
   const leave = useCallback(() => {
     void window.bombParty.leaveRoom();
     setPlayerId(null);
@@ -124,6 +140,7 @@ export const App = () => {
         onSoloGame={(name) => void startSolo(name)}
         onHostLan={(name, room) => void startLanHost(name, room)}
         onJoin={(host, name) => void join(host, name)}
+        onJoinByCode={joinByCode}
         onOpenSettings={() => setScreen('settings')}
       />
     );
@@ -138,6 +155,7 @@ export const App = () => {
           isHost={isHost}
           lanPort={lanPort}
           onHostIntent={onHostIntent}
+          onSend={onSend}
           onLeave={leave}
         />
       );

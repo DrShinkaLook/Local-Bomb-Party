@@ -21,6 +21,21 @@ import { loadDictionary } from './dictionary/loader.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
 
+/**
+ * Startup logging.
+ *
+ * `npm run dev` pipes stdout through concurrently, so anything printed here
+ * reaches the terminal. This exists because of a real failure: v0.3.0's first
+ * launch built everything, exited with code 0, and opened no window — with
+ * zero output to explain why. Silence is the worst possible diagnostic.
+ */
+const log = (...parts: unknown[]): void => {
+  console.log('[bombparty]', ...parts);
+};
+
+const DEV_SERVER_URL = 'http://localhost:5173';
+const MAX_DEV_LOAD_ATTEMPTS = 10;
+
 let window: BrowserWindow | null = null;
 let dictionary: Dictionary | null = null;
 
@@ -76,13 +91,48 @@ const createWindow = (): void => {
     },
   });
 
-  window.once('ready-to-show', () => window?.show());
+  window.once('ready-to-show', () => {
+    log('window ready, showing');
+    window?.show();
+  });
 
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
 
+  /**
+   * The window is created with `show: false` and only revealed on
+   * `ready-to-show`, which never fires if the page fails to load. Without this
+   * handler a failed load leaves a live, permanently invisible window: the
+   * process stays up, nothing appears, and nothing is logged.
+   *
+   * In development the usual cause is Electron winning the race against Vite's
+   * dev server, so retry a bounded number of times instead of giving up.
+   */
+  let devLoadAttempts = 0;
+  window.webContents.on(
+    'did-fail-load',
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame) return;
+      log(`failed to load ${validatedURL}: ${errorDescription} (${errorCode})`);
+
+      if (!isDev) {
+        window?.show();
+        return;
+      }
+      if (devLoadAttempts >= MAX_DEV_LOAD_ATTEMPTS) {
+        log(`giving up after ${MAX_DEV_LOAD_ATTEMPTS} attempts — is the Vite dev server running?`);
+        window?.show();
+        return;
+      }
+      devLoadAttempts += 1;
+      log(`retrying in 1s (attempt ${devLoadAttempts}/${MAX_DEV_LOAD_ATTEMPTS})`);
+      setTimeout(() => void window?.loadURL(DEV_SERVER_URL), 1_000);
+    },
+  );
+
   if (isDev) {
-    void window.loadURL('http://localhost:5173');
+    log(`loading ${DEV_SERVER_URL}`);
+    void window.loadURL(DEV_SERVER_URL);
   } else {
     void window.loadFile(join(here, '../dist/index.html'));
   }
@@ -206,9 +256,22 @@ const registerIpc = (): void => {
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-if (!app.requestSingleInstanceLock()) {
+/**
+ * Single-instance lock: packaged builds only.
+ *
+ * In a shipped app, refusing a second instance is right. In development it is
+ * a trap — one stray Electron process from an earlier run makes every later
+ * `npm run dev` call `app.quit()` and exit 0 with no window and no message,
+ * which is precisely how this went wrong. Nothing about developing the game
+ * needs the lock, so dev skips it.
+ */
+const hasSingleInstanceLock = isDev || app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  log('another instance already holds the single-instance lock — exiting');
   app.quit();
 } else {
+  log(`starting in ${isDev ? 'development' : 'packaged'} mode`);
   app.on('second-instance', () => {
     if (window === null) return;
     if (window.isMinimized()) window.restore();
@@ -216,6 +279,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   void app.whenReady().then(() => {
+    log('app ready, wiring IPC');
     registerIpc();
     mods.startWatching();
     mods.onChange((summaries) => emitToRenderer(CHANNELS.modsChanged, summaries));
@@ -235,6 +299,7 @@ if (!app.requestSingleInstanceLock()) {
       ),
     );
 
+    log('creating window');
     createWindow();
 
     app.on('activate', () => {
